@@ -1,0 +1,61 @@
+# lightning.pytorch==2.0.6
+
+################### Experiment information ######################
+seed_everything: 42
+ckpt_path: null
+test_only: false
+num_evolution_iters: 0 # 0 for generic training
+
+model: # Ideally, algorithm-relevant hyperparameters are kept here
+  agent_name: Supervised
+  init_args:
+    backbone: 'r2plus1d_18'
+    pretrained: True
+    num_classes: 4 # consistent with number of GT classes
+    learning_rate: 1e-4
+
+trainer:
+  accelerator: "gpu"
+  accumulate_grad_batches: 8
+  devices: [0]
+  fast_dev_run: false
+  #limit_train_batches: 50
+  #limit_val_batches: 50
+  #limit_test_batches: 50
+  max_epochs: 30
+
+logger: # files saved in <save_dir>/<name>_suffix
+  logger_name: WandbLogger
+  init_args:
+    save_dir: "../logs/" # root directory for wandb logs
+    project: "AS_valve" 
+    name: "R2plus1d_all_pseudo_round1"
+    notes: null
+    mode: "online"
+    
+checkpoint:
+  filename: "{epoch}-{val_f1_epoch:.2f}"
+  save_top_k: 1
+  monitor: "val_f1_epoch"
+  verbose: true
+  mode: "max"
+  save_last: true
+        
+data:
+  csv_name: '/workspace/AS_valvequality/logs/Baseline_r2plus1d_all/csvs/annotations-all-with-pseudolabels.csv'
+  data_dir: '/workspace/datasets/Aortic_Stenosis/as_tom/round2'
+  batch_size: 4
+  num_workers: 4
+  sampler: 'random'  # one of 'AS', 'random', 'bicuspid'
+  label_scheme_name: 'all'  # one of 'tufts', 'binary', 'all', 'not_severe', 'as_only', 'mild_moderate', 'moderate_severe'
+  view: 'all'   # one of  psax, plax, all
+  iterate_intervals: True # true if we get multiple images/videos in sequence during inference/push
+  interval_unit: 'cycle' # get X number of image/second/cycles
+  interval_quant: 1.1
+  augmentation: True  
+  transform_rotate_degrees: 15
+  transform_min_crop_ratio: 0.7
+  transform_time_dilation: 0.2
+  normalize: True
+  img_resolution: 224
+  frames: 16  # 1 for image-based, 2 or more for video-based
