@@ -6,6 +6,7 @@ import time
 from tqdm import tqdm
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
+from scipy.special import softmax
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -89,6 +90,14 @@ def plot_emb(
     None.
     """
     N, D = z.shape
+    
+    max_num_pts = 10000
+    # if N > 10000, we randomly plot 5000 points to reduce TSNE's computational load
+    if N > max_num_pts:
+        random_points = np.random.choice(range(N), max_num_pts, replace=False)
+        z = z[random_points]
+        y = y[random_points]
+        
     if protos is not None:
         P, _ = protos.shape
         embeddings = np.concatenate((z, protos), axis=0)
@@ -108,7 +117,7 @@ def plot_emb(
     Xe = embeddings[:N]
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    clr = np.array(["green", "orange", "red", "purple", "blue"])
+    clr = np.array(["green", "orange", "red", "purple", "blue", "brown", "gray", "pink", "olive", "cyan"])
     # plot ordinary datapoints
     ax.scatter(x=Xe[:, 0], y=Xe[:, 1], s=20, c=clr[y], marker="o", alpha=0.2)
     # plot prototypical datapoints
@@ -145,7 +154,41 @@ def save_csv(filename, y, pred, save_path):
     df = pd.DataFrame.from_dict(data_dict)
     if save_path is not None:
         df.to_csv(save_path)
-
+    return df
+        
+def convert_history_to_pseudo(pred_history):
+    # converts prediction history to pseudolabels
+    # pred_history is a dict where keys are the unique ID (uid)
+    # for training examples, and values are lists of network
+    # confidence values over training epochs
+    pseudo = {}
+    for k in pred_history.keys():
+        history = np.array(pred_history[k]) # n_epoch x C
+        pseudo[k] = np.mean(history, axis=0)
+    return pseudo
+    
+def save_pseudolabels(pseudo, save_path):
+    # save pseudolabels as a csv file
+    data_dict = {"uid":[]}
+    for k in pseudo.keys():
+        data_dict["uid"].append(k)
+        pseudolabel = pseudo[k]
+        C = len(pseudolabel)
+        for c in range(C):
+            column_name = "pseudo_" + str(c)
+            if data_dict.get(column_name) is None:
+                data_dict[column_name] = []
+            data_dict[column_name].append(pseudolabel[c])
+    df = pd.DataFrame.from_dict(data_dict)
+    if save_path is not None:
+        df.to_csv(save_path)
+    return df
 
 if __name__ == "__main__":
-    resolve_save_dir("../logs/", "hello")
+    #resolve_save_dir("../logs/", "hello")
+    history_test = {'a':[np.array([.3,.5,.2]), np.array([.1, .7, .2])], 
+                    'b':[np.array([.8,.1,.1]), np.array([.9, 0, .1])]}
+    pseudo = convert_history_to_pseudo(history_test)
+    print(pseudo)
+    df = save_pseudolabels(pseudo, None)
+    print(df)

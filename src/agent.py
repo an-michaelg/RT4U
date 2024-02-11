@@ -6,13 +6,13 @@ from tqdm import tqdm
 import math
 import pandas as pd
 import os
+from scipy.special import softmax
 
 import torch
 import lightning.pytorch as pl
 import torchmetrics
 
-from model_builder import get_backbone
-from loss import CELossAbstain
+from models import get_backbone
 from utils import plot_emb, save_csv
 
 
@@ -43,7 +43,7 @@ class Supervised(pl.LightningModule):
 
         # Initialize model
         self.encoder, embedding_dim = get_backbone(backbone, pretrained)
-        self.decoder = torch.nn.Linear(embedding_dim, self.prediction_dim)
+        self.decoder = torch.nn.Linear(embedding_dim, self.num_classes)
 
         # this loss can be used with both class probabilities and integer class labels
         self.ce_loss = torch.nn.CrossEntropyLoss(reduction="mean")
@@ -60,6 +60,7 @@ class Supervised(pl.LightningModule):
         """
         metrics = {}
         self.cache = {}
+        self.pred_history = {}
         self.modes = ["train", "val", "test"]
         for j in self.modes:
             metrics[j + "_f1"] = torchmetrics.F1Score(
@@ -70,7 +71,7 @@ class Supervised(pl.LightningModule):
             )
             self.cache[j + "_z"] = []
             self.cache[j + "_y"] = []
-            self.cache[j + "_filename"] = []
+            self.cache[j + "_uid"] = []
             self.cache[j + "_pred"] = []
         self.metrics = torch.nn.ModuleDict(metrics)
 
@@ -86,18 +87,14 @@ class Supervised(pl.LightningModule):
         return self.ce_loss(logits, y)
 
     def common_step(self, batch, batch_idx, mode="train"):
-        x = batch["cine"]
-        y = batch["target_AS"]
-        if self.label_mode == "pseudo":
-            pseudo = batch["target_pseudo"]
-            
+        x = batch["x"]
+        y = batch["y"] # one-hot label
+        y_u = batch["y_u"] # uncertainty-augmented label
+        
         outs = self.forward(x)
 
         # compute losses
-        if mode == 'train' and self.label_mode == 'pseudo':
-            loss = self.loss_wrapper(outs["logits"], pseudo)
-        else:
-            loss = self.loss_wrapper(outs["logits"], y)  # self.ce_loss(outs["logits"], y)
+        loss = self.loss_wrapper(outs["logits"], y_u)  # self.ce_loss(outs["logits"], y)
 
         # update metrics
         acc = self.metrics[mode + "_acc"](outs["logits"][:, : self.num_classes], y)
@@ -107,7 +104,7 @@ class Supervised(pl.LightningModule):
         self.log_dict(log)
         self.cache[mode + "_z"].append(outs["z"].detach().cpu())
         self.cache[mode + "_y"].append(y.cpu())
-        self.cache[mode + "_filename"].extend(batch["filename"])
+        self.cache[mode + "_uid"].extend(batch["uid"])
         self.cache[mode + "_pred"].append(outs["logits"].detach().cpu())
 
         return loss
@@ -126,7 +123,7 @@ class Supervised(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         # reveal all relevant input information
-        x = batch["cine"]
+        x = batch["x"]
         outs = self.forward(x)
         batch.update(outs)
         return batch  # , logits, z, attn
@@ -168,10 +165,19 @@ class Supervised(pl.LightningModule):
 
         # save a copy of the cached predictions
         pred_saved = torch.cat(self.cache[mode + "_pred"]).numpy()
-        filename_saved = self.cache[mode + "_filename"]
+        uid_saved = self.cache[mode + "_uid"]
         csv_save_name = title + ".csv"
         csv_save_path = os.path.join(self.csv_dir, csv_save_name)
-        save_csv(filename_saved, y_saved, pred_saved, csv_save_path)
+        save_csv(uid_saved, y_saved, pred_saved, csv_save_path)
+        
+        # update pred_history with the results from this epoch
+        pred_saved_softmax = softmax(pred_saved, axis=1)
+        for i in range(len(uid_saved)):
+            fn = uid_saved[i]
+            pr = pred_saved_softmax[i]
+            if self.pred_history.get(fn) is None:
+                self.pred_history[fn] = []
+            self.pred_history[fn].append(pr)
 
         for k in self.cache.keys():
             if mode in k:
@@ -185,3 +191,17 @@ class Supervised(pl.LightningModule):
 
     def on_test_epoch_end(self):
         self.common_epoch_end("test")
+        
+    # load only weights from a checkpoint file
+    def load_only_weights(self, ckpt_path=None):
+        if ckpt_path is not None:
+            checkpoint = torch.load(ckpt_path)
+            state_dict = checkpoint["state_dict"]
+            # this should work because LightningModule inherits from nn.Module
+            self.load_state_dict(state_dict, strict=False)
+            print("Model state_dict loaded from " + ckpt_path)
+        else:
+            print("No ckpt_path specified, returning")
+            
+    def get_prediction_history(self):
+        return self.pred_history

@@ -41,6 +41,8 @@ checkpoint:
   mode: "max"
   save_last: true
         
+dataset: "AS"
+
 data:
   csv_name: '/workspace/AS_valvequality/logs/Baseline_r2plus1d_all/csvs/annotations-all-with-pseudolabels.csv'
   data_dir: '/workspace/datasets/Aortic_Stenosis/as_tom/round2'

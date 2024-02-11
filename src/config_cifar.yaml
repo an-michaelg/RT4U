@@ -1,0 +1,51 @@
+# lightning.pytorch==2.0.6
+
+################### Experiment information ######################
+seed_everything: 42
+ckpt_path: null
+test_only: false
+num_evolution_iters: 2 # 0 for generic training
+reset_weights_between_rounds: false
+
+model: # Ideally, algorithm-relevant hyperparameters are kept here
+  agent_name: Supervised
+  init_args:
+    backbone: 'resnet_18'
+    pretrained: True
+    num_classes: 10 # consistent with number of GT classes
+    learning_rate: 1e-4
+
+trainer:
+  accelerator: "gpu"
+  accumulate_grad_batches: 8
+  devices: [0]
+  fast_dev_run: false
+  #limit_train_batches: 50
+  #limit_val_batches: 50
+  #limit_test_batches: 50
+  max_epochs: 30
+
+logger: # files saved in <save_dir>/<name>_suffix
+  logger_name: WandbLogger
+  init_args:
+    save_dir: "../logs/" # root directory for wandb logs
+    project: "CIFAR_label_evolution" 
+    name: "R18_evolution"
+    notes: null
+    mode: "online"
+    
+checkpoint:
+  filename: "{epoch}-{val_f1_epoch:.2f}"
+  save_top_k: 1
+  monitor: "val_f1_epoch"
+  verbose: true
+  mode: "max"
+  save_last: true
+        
+dataset: "CIFAR"
+
+data:
+  data_root: '/workspace/datasets/'
+  batch_size: 32
+  num_workers: 4
+  img_resolution: 224
