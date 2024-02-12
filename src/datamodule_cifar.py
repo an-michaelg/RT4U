@@ -66,18 +66,30 @@ def index_to_quadrant_id(index):
 def get_quadrant(img, quadrant_id):
     # PIL image -> PIL image
     w, h = img.size
-    match quadrant_id:
-    # quadrant ID is 0:top_left, 1:top_right, 2:bottom_left, 3:bottom_right
-        case 0:
-            window = (0, 0, w//2, h//2)
-        case 1:
-            window = (w//2, 0, w, h//2)
-        case 2:
-            window = (0, h//2, w//2, h)
-        case 3:
-            window = (w//2, h//2, w, h)
-        case _:
-            print("Invalid quadrant ID")
+    # match quadrant_id:
+    # # quadrant ID is 0:top_left, 1:top_right, 2:bottom_left, 3:bottom_right
+        # case 0:
+            # window = (0, 0, w//2, h//2)
+        # case 1:
+            # window = (w//2, 0, w, h//2)
+        # case 2:
+            # window = (0, h//2, w//2, h)
+        # case 3:
+            # window = (w//2, h//2, w, h)
+        # case _:
+            # print("Invalid quadrant ID")
+            
+    if quadrant_id == 0:
+        window = (0, 0, w//2, h//2)
+    elif quadrant_id == 1:
+        window = (w//2, 0, w, h//2)
+    elif quadrant_id == 2:
+        window = (0, h//2, w//2, h)
+    elif quadrant_id == 3:
+        window = (w//2, h//2, w, h)
+    else:
+        print("Invalid quadrant ID")
+        
     img = img.crop(window)
     img = img.resize((w,h))
     return img

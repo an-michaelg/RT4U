@@ -141,7 +141,7 @@ class Supervised(pl.LightningModule):
                 protos=None,
                 y_protos=None,
                 title=title,
-                compression="tsne",
+                compression="pca",
             )
 
     def common_epoch_end(self, mode="train"):
@@ -158,7 +158,7 @@ class Supervised(pl.LightningModule):
         # plot the embedding visualization
         z_saved = torch.cat(self.cache[mode + "_z"]).numpy()
         y_saved = torch.cat(self.cache[mode + "_y"]).numpy()
-        title = f"{mode}_{self.current_epoch}"
+        title = f"{mode}_{self.current_epoch}_{f1_epoch:.2f}"
         emb_save_name = title + ".jpg"
         emb_save_path = os.path.join(self.emb_dir, emb_save_name)
         self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title)
