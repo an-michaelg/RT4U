@@ -73,13 +73,10 @@ class ASDataModule(pl.LightningDataModule):
         self.frames = frames
 
     def setup(self, stage: str):
-        if stage == "fit":
-            self.dset_train = self.get_AS_dataset(split="train", mode="train")
-            self.dset_val = self.get_AS_dataset(split="val", mode="val")
-        if stage == "test":
-            self.dset_test = self.get_AS_dataset(split="val", mode="test")
-        if stage == "predict":
-            self.dset_predict = self.get_AS_dataset(split="val", mode="test")
+        self.dset_train = self.get_AS_dataset(split="train", mode="train")
+        self.dset_val = self.get_AS_dataset(split="val", mode="val")
+        self.dset_test = self.get_AS_dataset(split="val", mode="test")
+        self.dset_predict = self.get_AS_dataset(split="val", mode="test")
 
     def get_AS_dataset(self, split="train", mode="train"):
         dset = AorticStenosisDataset(
@@ -137,6 +134,13 @@ class ASDataModule(pl.LightningDataModule):
         return DataLoader(
             self.dset_predict, batch_size=1, shuffle=False, num_workers=self.num_workers
         )
+        
+    def get_pseudo(self):
+        return self.ds_train.get_pseudo()
+    
+    def set_pseudo(self, pseudo):
+        # modify the pseudo property of ds_train
+        self.ds_train.set_pseudo(pseudo)
 
 
 class AorticStenosisDataset(Dataset):
@@ -234,6 +238,29 @@ class AorticStenosisDataset(Dataset):
             )
             self.transform_time_dilation = transform_time_dilation
         self.normalize = normalize
+        
+        ##### CONFIGURE PSEUDOLABELS #####
+        self.num_classes = len(np.unique(list(self.scheme.values())))
+        self.pseudo = {}
+        for i in range(len(self.dataset)):
+            data_info = self.dataset.iloc[i]
+            label = int(self.scheme[data_info["as_label"]])
+            uid = data_info["path"]
+            self.pseudo[uid] = np.zeros(self.num_classes)
+            self.pseudo[uid][label] = 1.0
+            
+    def get_pseudo(self):
+        return self.pseudo
+        
+    def set_pseudo(self, new_pseudo):
+        keys_not_found = []
+        for k in new_pseudo.keys():
+            if self.pseudo.get(k) is not None:
+                self.pseudo[k] = new_pseudo[k]
+            else:
+                keys_not_found.append(k)
+        if len(keys_not_found) > 0:
+            print(f"Warning: new keys {k} do not exist in existing uid set")
 
     def class_sampler_AS(self):
         """
@@ -316,12 +343,8 @@ class AorticStenosisDataset(Dataset):
         cine = torch.tensor(cine).unsqueeze(0)  # 1xTxHxW, where T=1 if image
 
         label_as = torch.tensor(self.scheme[data_info["as_label"]])
+        label_as_soft = self.pseudo[data_info["path"]]
         view = torch.tensor((data_info["view"] == "psax") * 1)
-        
-        label_pseudo = []
-        if "pseudolabel_0" in data_info.index:
-            pseudolabel_cols = [f"pseudolabel_{c}" for c in range(4)]
-            label_pseudo = torch.tensor([data_info[c] for c in pseudolabel_cols]).squeeze()
 
         if self.transform:
             cine = self.transform(cine)
@@ -337,14 +360,13 @@ class AorticStenosisDataset(Dataset):
             "uid": data_info.path,
             "x": cine,
             "y": label_as,
+            "y_u": label_as_soft,
             "view": view,
             "interval_idx": interval_idx,
             "window_start": window_start,
             "window_end": window_end,
             "original_length": cine_original.shape[0],
         }
-        if "pseudolabel_0" in data_info.index:
-            ret.update({"target_pseudo": label_pseudo})
         if self.return_info:
             di = data_info.to_dict()
             ret.update({"data_info": di, "cine_original": cine_original})

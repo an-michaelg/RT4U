@@ -57,6 +57,7 @@ def main_no_cli(cfg):  # config file is loaded via yaml
     
     # obtain the datamodule object
     dm = datamodule_builder(cfg.dataset, cfg.data)
+    dm.setup("fit")
     
     # alternate flow for test only mode - use the existing folder
     if cfg.test_only:
