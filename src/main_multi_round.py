@@ -17,6 +17,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from agent import Supervised
 from datamodule_cifar import CIFAR_Q_DataModule
 from datamodule_as import ASDataModule
+from datamodule_tmed import TMED2_DataModule
 import utils
 import wandb
 
@@ -38,8 +39,10 @@ def datamodule_builder(dataset_name, data_args_dict):
     elif dataset_name == "AS":
         raise NotImplementedError # we are doing the CIFAR one first
         #return ASDataModule(**data_args_dict)
+    elif dataset_name == "TMED2":
+        return TMED2_DataModule(**data_args_dict)
     else:
-        raise ValueError
+        raise ValueError(f"Got dataset_name == {dataset_name}")
 
 # launch with something like python main.py --config-name=name_of_your_yaml (w/o file extension)
 @hydra.main(version_base=None, config_path=".", config_name="config")

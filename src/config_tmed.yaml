@@ -1,0 +1,55 @@
+# lightning.pytorch==2.0.6
+
+################### Experiment information ######################
+seed_everything: 42
+ckpt_path: null
+test_only: false
+num_evolution_iters: 0 # 0 for generic training
+reset_weights_between_rounds: true
+
+model: # Ideally, algorithm-relevant hyperparameters are kept here
+  agent_name: Supervised
+  init_args:
+    backbone: 'resnet_18'
+    pretrained: True
+    num_classes: 3 # consistent with number of GT classes
+    learning_rate: 1e-4
+
+trainer:
+  accelerator: "gpu"
+  accumulate_grad_batches: 8
+  devices: [1]
+  fast_dev_run: false
+  limit_train_batches: 2
+  limit_val_batches: 2
+  limit_test_batches: 2
+  max_epochs: 3
+
+logger: # files saved in <save_dir>/<name>_suffix
+  logger_name: WandbLogger
+  init_args:
+    save_dir: "../logs/" # root directory for wandb logs
+    project: "TMED_label_evolution" 
+    name: "R18_tmed"
+    notes: null
+    mode: "disabled"
+    
+checkpoint:
+  filename: "{epoch}-{val_f1_epoch:.2f}"
+  save_top_k: 1
+  monitor: "val_f1_epoch"
+  verbose: true
+  mode: "max"
+  save_last: true
+        
+dataset: "TMED2"
+
+data:
+  data_root: '/data/TMED/approved_users_only'
+  batch_size: 2
+  num_workers: 4
+  label_scheme_name: 'tufts'  # one of 'tufts', 'binary', 'all', 'not_severe'
+  parasternal_only: True
+  transform_rotate_degrees: 15
+  transform_min_crop_ratio: 0.9
+  img_resolution: 224
