@@ -172,13 +172,14 @@ class Supervised(pl.LightningModule):
         
         # update pred_history with the results from this epoch
         pred_saved_softmax = softmax(pred_saved, axis=1)
-        for i in range(len(uid_saved)):
-            fn = uid_saved[i]
-            pr = pred_saved_softmax[i]
-            if self.pred_history.get(fn) is None:
-                self.pred_history[fn] = []
-            self.pred_history[fn].append(pr)
-
+        if mode == "train":
+            for i in range(len(uid_saved)):
+                fn = uid_saved[i]
+                pr = pred_saved_softmax[i]
+                if self.pred_history.get(fn) is None:
+                    self.pred_history[fn] = []
+                self.pred_history[fn].append(pr)
+        
         for k in self.cache.keys():
             if mode in k:
                 self.cache[k].clear()
