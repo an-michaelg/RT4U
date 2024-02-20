@@ -34,6 +34,14 @@ class IncreaseSharp(object):
         else:
             return img
 
+class AdjustGamma(object):
+    def __init__(self, const_gamma):
+        self.gamma = const_gamma
+        
+    def __call__(self, img):
+        return TF.adjust_gamma(img, 1/self.gamma)
+
+
 class AdaptiveGamma(object):
     def __init__(self, p):
         self.p = p
