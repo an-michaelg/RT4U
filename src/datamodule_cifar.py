@@ -32,6 +32,7 @@ class CIFAR_Q_DataModule(pl.LightningDataModule):
         # See the manipulations done in the Dataset constructor
         self.ds_train = CIFAR10_Quadrants(self.data_root, split="train", transform=self.transform, download=self.download)
         self.ds_val = CIFAR10_Quadrants(self.data_root, split="val", transform=self.transform, download=self.download)
+        print(f"New CIFAR datasets instantiated")
         
     def train_dataloader(self):
         loader = DataLoader(self.ds_train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)

@@ -7,6 +7,7 @@ import math
 import pandas as pd
 import os
 from scipy.special import softmax
+from sklearn.metrics import confusion_matrix
 
 import torch
 import lightning.pytorch as pl
@@ -169,6 +170,10 @@ class Supervised(pl.LightningModule):
         csv_save_name = title + ".csv"
         csv_save_path = os.path.join(self.csv_dir, csv_save_name)
         save_csv(uid_saved, y_saved, pred_saved, csv_save_path)
+        
+        # plot the confusion matrix
+        pred_saved_argmax = np.argmax(pred_saved, axis=1)
+        print(confusion_matrix(y_saved, pred_saved_argmax))
         
         # update pred_history with the results from this epoch
         pred_saved_softmax = softmax(pred_saved, axis=1)

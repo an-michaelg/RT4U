@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 import lightning.pytorch as pl
 from typing import List, Dict, Union
 from typing import Any, Callable, Optional, Tuple
@@ -32,6 +32,7 @@ class TMED2_DataModule(pl.LightningDataModule):
         img_resolution: int = 224, 
         transform_min_crop_ratio: float = 0.9,
         transform_rotate_degrees: float = 15,
+        sampler: str = "random", # random/AS
         num_workers: int = 0
     ):
         super().__init__()
@@ -41,6 +42,7 @@ class TMED2_DataModule(pl.LightningDataModule):
         self.label_scheme_name = label_scheme_name
         self.img_resolution = img_resolution
         self.num_workers = num_workers
+        self.sampler = sampler
         
         # Regarding what Tufts does: they don't go farther than saying "random crops and flips"
         tfd = transforms.Compose([
@@ -72,10 +74,15 @@ class TMED2_DataModule(pl.LightningDataModule):
             label_scheme_name=self.label_scheme_name, 
             transform=transform
         )
+        print(f"New dataset instantiated: {split}")
         return dset
         
     def train_dataloader(self):
-        loader = DataLoader(self.ds_train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+        if self.sampler == "AS":
+            sampler_AS = self.ds_train.class_sampler()
+            loader = DataLoader(self.ds_train, batch_size=self.batch_size, sampler=sampler_AS, num_workers=self.num_workers)
+        else:
+            loader = DataLoader(self.ds_train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
         return loader
 
     def val_dataloader(self):
@@ -218,12 +225,26 @@ class TMED2(Dataset):
                 keys_not_found.append(k)
         if len(keys_not_found) > 0:
             print(f"Warning: new keys {k} do not exist in existing uid set")
+            
+    def class_sampler(self):
+        """
+        returns sampler (WeightedRandomSamplers) based on frequency of the AS classes occurring
+        """
+        numerical_labels = self.dataset["diagnosis_label"].apply(lambda x: self.scheme[x])
+        class_sample_count_as = numerical_labels.value_counts()[range(self.num_classes)].to_numpy()
+        print(class_sample_count_as)
+        weight_as = 1.0 / class_sample_count_as
+        print(weight_as)
+        samples_weight_as = weight_as[numerical_labels.to_numpy()]
+        sampler_as = WeightedRandomSampler(samples_weight_as, len(samples_weight_as))
+        return sampler_as
         
 if __name__ == "__main__":
     data_config = {"batch_size":1, "data_root":"/data/TMED/approved_users_only", "img_resolution":224, "label_scheme_name":"tufts"}
     dm = TMED2_DataModule(**data_config)
     stage = "fit"
     dm.setup(stage)
+    dm.ds_train.class_sampler()
     train_loader = dm.train_dataloader()
     val_loader = dm.val_dataloader()
     

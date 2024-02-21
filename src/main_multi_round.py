@@ -122,8 +122,8 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         trainer = pl.Trainer(**cfg.trainer, callbacks=[checkpoint_callback], logger=logger)
         
         # run the training and test procedures
-        trainer.fit(model, ckpt_path=cfg.ckpt_path, datamodule=dm)
-        trainer.test(model, ckpt_path=None, datamodule=dm)
+        trainer.fit(model, ckpt_path=cfg.ckpt_path, train_dataloaders=dm.train_dataloader(), val_dataloaders=dm.val_dataloader())
+        trainer.test(model, ckpt_path="best", dataloaders=dm.test_dataloader())
         
         # get the history from this round of training and create pseudolabels
         prediction_history = model.get_prediction_history()

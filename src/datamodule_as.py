@@ -75,7 +75,7 @@ class ASDataModule(pl.LightningDataModule):
     def setup(self, stage: str):
         self.dset_train = self.get_AS_dataset(split="train", mode="train")
         self.dset_val = self.get_AS_dataset(split="val", mode="val")
-        self.dset_test = self.get_AS_dataset(split="val", mode="test")
+        self.dset_test = self.get_AS_dataset(split="test", mode="test")
         self.dset_predict = self.get_AS_dataset(split="val", mode="test")
 
     def get_AS_dataset(self, split="train", mode="train"):
@@ -98,6 +98,7 @@ class ASDataModule(pl.LightningDataModule):
             img_size=self.img_resolution,
             return_info=False,  # (mode == "test"),
         )
+        print(f"New dataset instantiated: split={split}, mode={mode}")
         return dset
 
     def train_dataloader(self):
