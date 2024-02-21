@@ -18,7 +18,7 @@ model: # Ideally, algorithm-relevant hyperparameters are kept here
 trainer:
   accelerator: "gpu"
   accumulate_grad_batches: 8
-  devices: [0]
+  devices: [1]
   fast_dev_run: false
   #limit_train_batches: 10
   #limit_val_batches: 10
@@ -30,7 +30,7 @@ logger: # files saved in <save_dir>/<name>_suffix
   init_args:
     save_dir: "../logs/" # root directory for wandb logs
     project: "CIFAR_label_evolution" 
-    name: "R18_evolution_w_reset"
+    name: "R18_cifar"
     notes: null
     mode: "disabled"
     
