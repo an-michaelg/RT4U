@@ -30,7 +30,7 @@ logger: # files saved in <save_dir>/<name>_suffix
   init_args:
     save_dir: "../logs/" # root directory for wandb logs
     project: "CIFAR_label_evolution" 
-    name: "R18_cifar"
+    name: "R18_cifar_smaller_val"
     notes: null
     mode: "disabled"
     

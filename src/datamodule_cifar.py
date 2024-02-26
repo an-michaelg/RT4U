@@ -119,11 +119,12 @@ class CIFAR10_Quadrants(torchvision.datasets.CIFAR10):
         
         # re-index the data for training and validation split
         if split == "train":
-            self.data = self.data[:40000]
-            self.targets = self.targets[:40000]
+            self.data = self.data[:47500]
+            self.targets = self.targets[:47500]
         elif split == "val":
-            self.data = self.data[40000:]
-            self.targets = self.targets[40000:]
+            self.data = self.data[47500:]
+            self.targets = self.targets[47500:]
+            print(np.unique(self.targets, return_counts=True))
         elif split != "test":
             assert ValueError(f"Split must be train/val/test, received {split}")
             

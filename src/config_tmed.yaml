@@ -23,14 +23,14 @@ trainer:
   #limit_train_batches: 2
   #limit_val_batches: 2
   #limit_test_batches: 2
-  max_epochs: 15
+  max_epochs: 30
 
 logger: # files saved in <save_dir>/<name>_suffix
   logger_name: WandbLogger
   init_args:
     save_dir: "../logs/" # root directory for wandb logs
     project: "TMED_label_evolution" 
-    name: "R18_tmed"
+    name: "R18_tmed_as_sampler"
     notes: null
     mode: "disabled"
     
@@ -53,3 +53,4 @@ data:
   transform_rotate_degrees: 15
   transform_min_crop_ratio: 0.9
   img_resolution: 224
+  sampler: 'AS'
