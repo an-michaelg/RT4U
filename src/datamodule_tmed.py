@@ -4,6 +4,7 @@ import re
 from PIL import Image
 import numpy as np
 import pandas as pd
+import torch
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
@@ -20,6 +21,11 @@ tmed_label_schemes: Dict[str, Dict[str, Union[int, float]]] = {
     'binary': {'no_AS': 0, 'mild_AS': 1, 'mildtomod_AS':1, 'moderate_AS': 1, 'severe_AS': 1},
     'all': {'no_AS': 0, 'mild_AS': 1, 'mildtomod_AS':2, 'moderate_AS': 3, 'severe_AS': 4},
     'not_severe': {'no_AS': 0, 'mild_AS': 0, 'mildtomod_AS':0, 'moderate_AS': 0, 'severe_AS': 1}
+}
+
+tmed_view_schemes: Dict[str, Dict[str, Union[int, float]]] = {
+    'binary': {'A4C': 0, 'A2C': 0, 'PLAX':1, 'PSAX': 1, 'A4CorA2CorOther': 0},
+    'all': {'A4C': 0, 'A2C': 1, 'PLAX':2, 'PSAX': 3, 'A4CorA2CorOther': 4}
 }
 
 class TMED2_DataModule(pl.LightningDataModule):
@@ -198,6 +204,10 @@ class TMED2(Dataset):
         y = int(self.scheme[data_info["diagnosis_label"]]) # human-assigned GT
         y_u = self.pseudo[uid] # uncertainty-augmented target
         view = data_info['view_label']
+        y_view = int(tmed_view_schemes['all'][view])
+        n_view_classes = len(np.unique(list(tmed_view_schemes['all'].values())))
+        y_view_u = np.zeros(n_view_classes)
+        y_view_u[y_view] = 1.0
 
         if self.transform is not None:
             img = self.transform(img)

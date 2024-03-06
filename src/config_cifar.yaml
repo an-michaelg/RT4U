@@ -4,7 +4,7 @@
 seed_everything: 42
 ckpt_path: null
 test_only: false
-num_evolution_iters: 2 # 0 for generic training
+num_evolution_iters: 0 # 0 for generic training
 reset_weights_between_rounds: true
 
 model: # Ideally, algorithm-relevant hyperparameters are kept here
@@ -14,6 +14,7 @@ model: # Ideally, algorithm-relevant hyperparameters are kept here
     pretrained: True
     num_classes: 10 # consistent with number of GT classes
     learning_rate: 1e-4
+    loss: 'ce' # ce/mae/nce_rce/anl_ce
 
 trainer:
   accelerator: "gpu"
@@ -40,7 +41,7 @@ checkpoint:
   monitor: "val_f1_epoch"
   verbose: true
   mode: "max"
-  save_last: true
+  save_last: false
         
 dataset: "CIFAR"
 

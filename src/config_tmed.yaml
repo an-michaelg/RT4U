@@ -13,7 +13,8 @@ model: # Ideally, algorithm-relevant hyperparameters are kept here
     backbone: 'resnet_18'
     pretrained: True
     num_classes: 3 # consistent with number of GT classes
-    learning_rate: 1e-4
+    learning_rate: 7e-4
+    loss: 'ce'
 
 trainer:
   accelerator: "gpu"
@@ -23,24 +24,24 @@ trainer:
   #limit_train_batches: 2
   #limit_val_batches: 2
   #limit_test_batches: 2
-  max_epochs: 30
+  max_epochs: 15
 
 logger: # files saved in <save_dir>/<name>_suffix
   logger_name: WandbLogger
   init_args:
     save_dir: "../logs/" # root directory for wandb logs
     project: "TMED_label_evolution" 
-    name: "R18_tmed_as_sampler"
+    name: "tmed_highlr"
     notes: null
     mode: "disabled"
     
 checkpoint:
-  filename: "{epoch}-{val_f1_epoch:.2f}"
+  filename: "{epoch}-{val_bacc_epoch:.2f}"
   save_top_k: 1
   monitor: "val_f1_epoch"
   verbose: true
   mode: "max"
-  save_last: true
+  save_last: false
         
 dataset: "TMED2"
 
@@ -49,7 +50,7 @@ data:
   batch_size: 16
   num_workers: 4
   label_scheme_name: 'tufts'  # one of 'tufts', 'binary', 'all', 'not_severe'
-  parasternal_only: True
+  parasternal_only: False
   transform_rotate_degrees: 15
   transform_min_crop_ratio: 0.9
   img_resolution: 224

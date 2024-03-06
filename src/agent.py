@@ -16,6 +16,8 @@ import torchmetrics
 from models import get_backbone
 from utils import plot_emb, save_csv
 
+from noise_robust_losses import mae, nce_rce, anl_ce
+
 
 class Supervised(pl.LightningModule):
     def __init__(
@@ -25,6 +27,7 @@ class Supervised(pl.LightningModule):
         num_classes=4,
         learning_rate=1e-4,
         save_dir=None,
+        loss='ce',
         **kwargs,
     ):
         super().__init__()
@@ -47,7 +50,15 @@ class Supervised(pl.LightningModule):
         self.decoder = torch.nn.Linear(embedding_dim, self.num_classes)
 
         # this loss can be used with both class probabilities and integer class labels
-        self.ce_loss = torch.nn.CrossEntropyLoss(reduction="mean")
+        if loss == 'ce':
+            # this weighted loss implementation is hella sketch remember to turn it off for not TMED
+            self.loss_fcn = torch.nn.CrossEntropyLoss(reduction="mean")
+        elif loss == 'mae':
+            self.loss_fcn = mae(self.num_classes)
+        elif loss == 'nce_rce':
+            self.loss_fcn = nce_rce(self.num_classes)
+        elif loss == 'anl_ce':
+            self.loss_fcn = anl_ce(self.num_classes)
 
         # Define metrics for each stage and save intermediate outputs
         """
@@ -64,8 +75,11 @@ class Supervised(pl.LightningModule):
         self.pred_history = {}
         self.modes = ["train", "val", "test"]
         for j in self.modes:
-            metrics[j + "_f1"] = torchmetrics.F1Score(
-                task="multiclass", num_classes=num_classes, average="macro"
+            #metrics[j + "_f1"] = torchmetrics.F1Score(
+            #    task="multiclass", num_classes=num_classes, average="macro"
+            #)
+            metrics[j + "_f1"] = torchmetrics.classification.MulticlassAccuracy(
+               num_classes=num_classes, average="macro"
             )
             metrics[j + "_acc"] = torchmetrics.Accuracy(
                 task="multiclass", num_classes=num_classes
@@ -85,7 +99,7 @@ class Supervised(pl.LightningModule):
         return {"logits": logits, "z": z}
 
     def loss_wrapper(self, logits, y):
-        return self.ce_loss(logits, y)
+        return self.loss_fcn(logits, y)
 
     def common_step(self, batch, batch_idx, mode="train"):
         x = batch["x"]

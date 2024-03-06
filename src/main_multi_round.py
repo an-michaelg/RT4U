@@ -58,6 +58,8 @@ def main_no_cli(cfg):  # config file is loaded via yaml
     
     test_only = cfg.test_only
     
+    pl.seed_everything(cfg.seed_everything)
+    
     # obtain the datamodule object
     dm = datamodule_builder(cfg.dataset, cfg.data)
     dm.setup("fit")
@@ -75,7 +77,7 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         
         # instantiate the lightningmodule
         model = agent_builder(cfg.model.agent_name, cfg.model.init_args, full_save_dir)
-        trainer = pl.Trainer(**cfg.trainer, callbacks=[checkpoint_callback], logger=logger)
+        trainer = pl.Trainer(**cfg.trainer, callbacks=[checkpoint_callback], logger=logger, deterministic=True)
         
         # test the model
         trainer.test(model, ckpt_path=cfg.ckpt_path, datamodule=dm)
