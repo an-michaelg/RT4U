@@ -12,7 +12,7 @@ def LABEL_fit(y, preds, alpha = 0.1, verbose=False):
     # calculate the conformal score s as a general imprecise uncertainty measure (can be many ways, this is a simple way)
     s = 1 - gt_confidence
     # find the q level
-    q_level = np.ceil((N+1) * desired_accuracy)/N 
+    q_level = min(np.ceil((N+1) * desired_accuracy)/N, 1.0) 
     qhat = np.quantile(s, q_level)
     if verbose:
         print(f"adjusted q-level {q_level}, q-hat {qhat}")
@@ -21,7 +21,7 @@ def LABEL_fit(y, preds, alpha = 0.1, verbose=False):
 
 def LABEL_inference(preds, qhat):
     # preds is (N, C) array of confidences
-    # qhat is computed from LABEL_fit
+    # qhat is computed from LABEL_fit, can be scalar or length-C nparray
     pred_classes = np.argmax(preds,axis=1)
     cutoff = 1 - qhat
     N, C = preds.shape
@@ -65,6 +65,15 @@ def group_LABEL_inference(preds, group_labels, qhats):
         subgroup_qhat = qhats[subgroup]
         conformal_set.append(preds[i] >= 1 - subgroup_qhat)
     return np.array(conformal_set)
+    
+def class_balanced_LABEL_fit(y, preds, alpha=0.1, verbose=False):
+    N, C = preds.shape
+    qhats = []
+    for i in range(C):
+        y_c = y[y == i]
+        preds_c = preds[y==i]
+        qhats.append(LABEL_fit(y_c, preds_c, alpha, verbose))
+    return np.array(qhats)
 
 
 def APS_fit(cal_labels, cal_smx, alpha=0.1, verbose=False):

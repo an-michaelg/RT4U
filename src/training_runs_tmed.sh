@@ -1,0 +1,2 @@
+#python main_multi_round.py --config-name=config_tmed ++model.init_args.loss="nce_rce" ++logger.init_args.name="tmed_as_nce_rce" 
+python main_multi_round.py --config-name=config_tmed ++model.init_args.loss=anl_ce ++logger.init_args.name=tmed_as_anl_ce
