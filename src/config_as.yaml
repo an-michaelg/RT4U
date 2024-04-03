@@ -44,8 +44,8 @@ checkpoint:
 dataset: "AS"
 
 data:
-  csv_name: '/workspace/AS_valvequality/logs/Baseline_r2plus1d_all/csvs/annotations-all-with-pseudolabels.csv'
-  data_dir: '/workspace/datasets/Aortic_Stenosis/as_tom/round2'
+  csv_name: '/data/Aortic_Stenosis/as_tom/round2/annotations-all.csv'
+  data_dir: '/data/Aortic_Stenosis/as_tom/round2'
   batch_size: 4
   num_workers: 4
   sampler: 'random'  # one of 'AS', 'random', 'bicuspid'
