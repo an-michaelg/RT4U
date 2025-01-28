@@ -37,8 +37,7 @@ def datamodule_builder(dataset_name, data_args_dict):
     if dataset_name == "CIFAR":
         return CIFAR_Q_DataModule(**data_args_dict)
     elif dataset_name == "AS":
-        raise NotImplementedError # we are doing the CIFAR one first
-        #return ASDataModule(**data_args_dict)
+        return ASDataModule(**data_args_dict)
     elif dataset_name == "TMED2":
         return TMED2_DataModule(**data_args_dict)
     else:

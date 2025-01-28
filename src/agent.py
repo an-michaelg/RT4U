@@ -148,7 +148,7 @@ class Supervised(pl.LightningModule):
         return optimizer
 
     def plot_emb_wrapper(self, z, y, fig_path, title):
-        if len(z) > 50:  # define minimum number of points for plotting
+        if len(z) > 100:  # define minimum number of points for plotting
             plot_emb(
                 z,
                 y,
@@ -174,6 +174,15 @@ class Supervised(pl.LightningModule):
         z_saved = torch.cat(self.cache[mode + "_z"]).numpy()
         y_saved = torch.cat(self.cache[mode + "_y"]).numpy()
         title = f"{mode}_{self.current_epoch}_{f1_epoch:.2f}"
+        
+        if self.save_dir is not None:
+            emb_save_name = title + "_tsne.jpg"
+            emb_save_path = os.path.join(self.emb_dir, emb_save_name)
+            self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title)
+            emb_save_name = title + "_umap.jpg"
+            emb_save_path = os.path.join(self.emb_dir, emb_save_name)
+            self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title)
+        
         emb_save_name = title + ".jpg"
         emb_save_path = os.path.join(self.emb_dir, emb_save_name)
         self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title)
@@ -183,7 +192,9 @@ class Supervised(pl.LightningModule):
         uid_saved = self.cache[mode + "_uid"]
         csv_save_name = title + ".csv"
         csv_save_path = os.path.join(self.csv_dir, csv_save_name)
-        save_csv(uid_saved, y_saved, pred_saved, csv_save_path)
+        if self.save_dir is not None:
+            if len(y_saved) > 100: # prevents saving the sanity check run
+                save_csv(uid_saved, y_saved, pred_saved, csv_save_path)
         
         # plot the confusion matrix
         pred_saved_argmax = np.argmax(pred_saved, axis=1)

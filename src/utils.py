@@ -9,6 +9,7 @@ from sklearn.decomposition import PCA
 from scipy.special import softmax
 import matplotlib.pyplot as plt
 import pandas as pd
+import umap
 
 
 def l2_norm(X):
@@ -43,6 +44,17 @@ def tsne(X, compress=True):
 
 def PCA_compress(X, dim=2):
     return PCA(n_components=2).fit_transform(X)
+    
+    
+def umap_compress(X, compress=True):
+    D_MAX = 50
+    N, D = X.shape
+    if compress and min(N, D) > D_MAX:
+        X = PCA(n_components=D_MAX).fit_transform(X)
+        
+    reducer = umap.UMAP()
+    X_embedded = reducer.fit_transform(X)
+    return X_embedded
 
 
 def resolve_save_dir(save_dir, experiment_name):
@@ -109,6 +121,8 @@ def plot_emb(
         embeddings = tsne(embeddings)
     elif compression == "pca":
         embeddings = PCA_compress(embeddings)
+    elif compression == "umap":
+        embeddings = umap_compress(embeddings)
     else:
         raise NotImplementedError()
 

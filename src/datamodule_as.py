@@ -137,11 +137,11 @@ class ASDataModule(pl.LightningDataModule):
         )
         
     def get_pseudo(self):
-        return self.ds_train.get_pseudo()
+        return self.dset_train.get_pseudo()
     
     def set_pseudo(self, pseudo):
         # modify the pseudo property of ds_train
-        self.ds_train.set_pseudo(pseudo)
+        self.dset_train.set_pseudo(pseudo)
 
 
 class AorticStenosisDataset(Dataset):
