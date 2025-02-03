@@ -19,7 +19,7 @@ model: # Ideally, algorithm-relevant hyperparameters are kept here
 trainer:
   accelerator: "gpu"
   accumulate_grad_batches: 8
-  devices: [0]
+  devices: [1]
   fast_dev_run: false
   #limit_train_batches: 2
   #limit_val_batches: 2

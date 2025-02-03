@@ -17,6 +17,7 @@ from models import get_backbone
 from utils import plot_emb, save_csv
 
 from noise_robust_losses import mae, nce_rce, anl_ce
+from evidential import EvidentialLoss
 
 
 class Supervised(pl.LightningModule):
@@ -59,6 +60,8 @@ class Supervised(pl.LightningModule):
             self.loss_fcn = nce_rce(self.num_classes)
         elif loss == 'anl_ce':
             self.loss_fcn = anl_ce(self.num_classes)
+        elif loss == 'evidential':
+            self.loss_fcn = EvidentialLoss()
 
         # Define metrics for each stage and save intermediate outputs
         """
@@ -147,7 +150,7 @@ class Supervised(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer
 
-    def plot_emb_wrapper(self, z, y, fig_path, title):
+    def plot_emb_wrapper(self, z, y, fig_path, title, compression="tsne"):
         if len(z) > 100:  # define minimum number of points for plotting
             plot_emb(
                 z,
@@ -156,7 +159,7 @@ class Supervised(pl.LightningModule):
                 protos=None,
                 y_protos=None,
                 title=title,
-                compression="pca",
+                compression=compression,
             )
 
     def common_epoch_end(self, mode="train"):
@@ -178,14 +181,11 @@ class Supervised(pl.LightningModule):
         if self.save_dir is not None:
             emb_save_name = title + "_tsne.jpg"
             emb_save_path = os.path.join(self.emb_dir, emb_save_name)
-            self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title)
+            self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title, compression="tsne")
             emb_save_name = title + "_umap.jpg"
             emb_save_path = os.path.join(self.emb_dir, emb_save_name)
-            self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title)
+            self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title, compression="umap")
         
-        emb_save_name = title + ".jpg"
-        emb_save_path = os.path.join(self.emb_dir, emb_save_name)
-        self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title)
 
         # save a copy of the cached predictions
         pred_saved = torch.cat(self.cache[mode + "_pred"]).numpy()

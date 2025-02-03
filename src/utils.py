@@ -103,8 +103,8 @@ def plot_emb(
     """
     N, D = z.shape
     
-    max_num_pts = 10000
-    # if N > 10000, we randomly plot 5000 points to reduce TSNE's computational load
+    max_num_pts = 2000
+    # if N > 2000, we randomly plot 2000 points to reduce TSNE's computational load
     if N > max_num_pts:
         random_points = np.random.choice(range(N), max_num_pts, replace=False)
         z = z[random_points]
@@ -115,7 +115,7 @@ def plot_emb(
         embeddings = np.concatenate((z, protos), axis=0)
     else:
         embeddings = z
-    print(f"Plotting {D}->2 embedding with {N} samples and {len(embeddings)} entries.")
+    print(f"Plotting {D}->2 {compression} embedding, N={N}, N_visualized={len(embeddings)}.")
 
     if compression == "tsne":
         embeddings = tsne(embeddings)
