@@ -1,7 +1,61 @@
 # Functions for evidential loss and combination
-
 import torch
 import torch.nn.functional as F
+
+# DS combination function from https://github.com/hanmenghan/TMC
+def DS_Combin(alpha):
+    """
+    :param alpha: list of all Dirichlet distribution parameters.
+    :return: Combined Dirichlet distribution parameters.
+    """
+    def DS_Combin_two(alpha1, alpha2):
+        """
+        :param alpha1: Dirichlet distribution parameters of view 1, NxC
+        :param alpha2: Dirichlet distribution parameters of view 2, NxC
+        :return: Combined Dirichlet distribution parameters
+        """
+        alpha = dict()
+        alpha[0], alpha[1] = alpha1, alpha2
+        _, num_classes = alpha1.shape
+        b, S, E, u = dict(), dict(), dict(), dict()
+        for v in range(2):
+            S[v] = torch.sum(alpha[v], dim=1, keepdim=True)
+            E[v] = alpha[v]-1
+            b[v] = E[v]/(S[v].expand(E[v].shape))
+            u[v] = num_classes/S[v]
+
+        # b^0 @ b^(0+1)
+        bb = torch.bmm(b[0].view(-1, num_classes, 1), b[1].view(-1, 1, num_classes))
+        # b^0 * u^1
+        uv1_expand = u[1].expand(b[0].shape)
+        bu = torch.mul(b[0], uv1_expand)
+        # b^1 * u^0
+        uv_expand = u[0].expand(b[0].shape)
+        ub = torch.mul(b[1], uv_expand)
+        # calculate C
+        bb_sum = torch.sum(bb, dim=(1, 2), out=None)
+        bb_diag = torch.diagonal(bb, dim1=-2, dim2=-1).sum(-1)
+        # bb_diag1 = torch.diag(torch.mm(b[v], torch.transpose(b[v+1], 0, 1)))
+        C = bb_sum - bb_diag
+
+        # calculate b^a
+        b_a = (torch.mul(b[0], b[1]) + bu + ub)/((1-C).view(-1, 1).expand(b[0].shape))
+        # calculate u^a
+        u_a = torch.mul(u[0], u[1])/((1-C).view(-1, 1).expand(u[0].shape))
+
+        # calculate new S
+        S_a = num_classes / u_a
+        # calculate new e_k
+        e_a = torch.mul(b_a, S_a.expand(b_a.shape))
+        alpha_a = e_a + 1
+        return alpha_a
+
+    for v in range(len(alpha)-1):
+        if v==0:
+            alpha_a = DS_Combin_two(alpha[0], alpha[1])
+        else:
+            alpha_a = DS_Combin_two(alpha_a, alpha[v+1])
+    return alpha_a
 
 # KL divergence between the dirichlet distribution parameterized by alpha and the uniform dirichlet
 # computes KLD per sample, expects input size of NxC
@@ -58,10 +112,13 @@ class EvidentialLoss(torch.nn.Module):
         
         
 if __name__ == "__main__":
-    coeff = 0.1
-    EvLoss = EvidentialLoss()
-    logits = torch.Tensor([[-1, -1, 5],[-4, 2.1, 2.1]])
-    labels = torch.Tensor([[0, 0, 1],[0.0, 0.5, 0.5]])
-    loss = EvLoss(logits, labels, coeff)
-    print(loss)
+    #coeff = 0.1
+    #EvLoss = EvidentialLoss()
+    #logits = torch.Tensor([[-1, -1, 5],[-4, 2.1, 2.1]])
+    #labels = torch.Tensor([[0, 0, 1],[0.0, 0.5, 0.5]])
+    #loss = EvLoss(logits, labels, coeff)
+    #print(loss)
+    alpha1 = torch.Tensor([[1, 2, 5],[1, 2, 2]])
+    alpha2 = torch.Tensor([[1, 1, 5],[1, 1, 3]])
+    print(DS_Combin([alpha1, alpha2]))
     
