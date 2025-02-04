@@ -11,6 +11,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import umap
 
+from platt_scaling import platt_scaling_fit
+from evidential import discounting_fit
+
+MODES =  ["train", "val", "test"]
+
 
 def l2_norm(X):
     # return the row-wise l2 norm of the vectors in X
@@ -169,16 +174,87 @@ def save_csv(filename, y, pred, save_path):
     if save_path is not None:
         df.to_csv(save_path)
     return df
+    
+
+# helper for numpy array
+def output_to_evidence(arr):
+    return arr.clip(min=0)
         
-def convert_history_to_pseudo(pred_history):
-    # converts prediction history to pseudolabels
-    # pred_history is a dict where keys are the unique ID (uid)
-    # for training examples, and values are lists of network
-    # confidence values over training epochs
+
+def convert_history_to_pseudo(pred_history, label_bank, method="avg_pred", calibrate=True):
+    """
+    Converts prediction history from the agent to pseudolabels.
+    Parameters
+    ----------
+    pred_history : dict
+        pred_history is a dict with three keys as defined by MODES.
+        pred_history[mode] is a dict where 
+        keys are the unique ID (uid), 
+        values are numpy arrays of network predictions over training epochs
+    label_bank : dict
+        label_bank keys are unique ID (uid) and values are the one-hot labels
+    method : String, optional
+        specifies the method used to produce pseudolabels, can be
+        - avg_pred: averages the confidence [0..1] across all epochs
+        - avg_logit: averages the logits across all epochs
+        - evidence: averages the alpha from DST across all epochs
+    calibrate : boolean, optional
+        if calibrate, then utilize the validation set and label_bank to calibrate results
+        with either temperature scaling (logits) or discount factor (evidential)
+    Returns
+    -------
+    pseudo : dict
+        Dictionary of pseudolabel values for the training set
+        where keys are filenames and values are (C, ) numpy arrays 
+        with values between [0..1] and sum = 1
+    """
     pseudo = {}
-    for k in pred_history.keys():
-        history = np.array(pred_history[k]) # n_epoch x C
-        pseudo[k] = np.mean(history, axis=0)
+    if method == "avg_pred":
+        for k in pred_history["train"].keys():
+            history = np.array(pred_history["train"][k]) # n_epoch x C
+            confidence = softmax(history, axis=1)
+            pseudo[k] = np.mean(confidence, axis=0)
+    elif method == "avg_logit":
+        # find the logit average for each example
+
+        if calibrate: # perform temperature scaling    
+            avg_va, y_va = [], []
+            for k in pred_history["val"].keys():
+                history = np.array(pred_history["val"][k]) # n_epoch x C
+                avg_va.append(np.mean(history, axis=0))
+                y_va.append(label_bank[k])
+                
+            temp = platt_scaling_fit(np.array(avg_va), y_va, num_iters=5000, mode="temp")
+        else:
+            temp = 1.0
+        for k in pred_history["train"].keys():
+            history = np.array(pred_history["train"][k]) # n_epoch x C
+            pseudo[k] = softmax(np.mean(history, axis=0) * temp)
+            
+    elif method == "evidence":
+        # find the alpha average per example
+        
+        if calibrate: # perform discounting    
+            ev_va, y_va = [], []
+            for k in pred_history["val"].keys():
+                history = np.array(pred_history["val"][k]) # n_epoch x C
+                history_evidence = output_to_evidence(history)
+                ev_va.append(np.mean(history_evidence, axis=0))
+                y_va.append(label_bank[k])
+                
+            dfs = [discounting_fit(np.array(ev_va), y_va, num_iters=5000) for _ in range(5)]
+            df = np.mean(dfs)
+        else:
+            df = 1.0
+        for k in pred_history["train"].keys():
+            history = np.array(pred_history["train"][k]) # n_epoch x C
+            history_evidence = output_to_evidence(history)
+            discounted_evidence = np.mean(history_evidence, axis=0) * df # C
+            alpha = discounted_evidence + 1
+            pseudo[k] = alpha / np.sum(alpha)
+    else:
+        raise ValueError(f"method must be avg_pred/avg_logit/evidence, received {method}")
+            
     return pseudo
     
 def save_pseudolabels(pseudo, save_path):
@@ -200,9 +276,13 @@ def save_pseudolabels(pseudo, save_path):
 
 if __name__ == "__main__":
     #resolve_save_dir("../logs/", "hello")
-    history_test = {'a':[np.array([.3,.5,.2]), np.array([.1, .7, .2])], 
-                    'b':[np.array([.8,.1,.1]), np.array([.9, 0, .1])]}
-    pseudo = convert_history_to_pseudo(history_test)
+    history_test = {}
+    history_test["train"] = {'a':[np.array([-3,4,2]), np.array([-1, 7, 2])], 
+                            'b':[np.array([8,1,-1]), np.array([9, 0, -1])]}
+    history_test["val"] = {'c':[np.array([-3,4,2]), np.array([-1, 7, 2])], 
+                            'd':[np.array([8,1,-1]), np.array([9, 0, -1])]}
+    labels = {'a':0, 'b':0, 'c':1, 'd':0}
+    pseudo = convert_history_to_pseudo(history_test, labels, method='avg_pred', calibrate=False)
     print(pseudo)
     df = save_pseudolabels(pseudo, None)
     print(df)

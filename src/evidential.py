@@ -110,6 +110,34 @@ class EvidentialLoss(torch.nn.Module):
         loss = (sq_loss + var) + kl_coeff * kl
         return loss.mean()
         
+
+def discounting_fit(evidence, y, num_iters=5000):
+    # evidence: (N, D) ndarray of evidence values
+    # y: (N,) ndarray of integer labels, or (N, D) ndarray of probabilities that sum to 1
+    N, D = evidence.shape
+    
+    loss_fcn = EvidentialLoss()
+    
+    ev_tensor = torch.Tensor(evidence)
+    params = torch.randn(1, requires_grad=True)
+    
+    y_tensor = F.one_hot(torch.Tensor(y).long(), num_classes=D)
+    #print(y_tensor)
+    optimizer = torch.optim.SGD([params], lr=1e-1)
+    
+    for i in range(num_iters):
+        optimizer.zero_grad()
+        discount_factor = F.sigmoid(params)
+        new_evidence = discount_factor * ev_tensor
+        loss = loss_fcn(new_evidence, y_tensor, kl_coeff=0)
+        loss.backward()
+        optimizer.step()
+        
+        #if i % 500 == 0:
+        #    print(f"{discount_factor.item()}, {loss.item()}")
+            
+    return discount_factor.detach().numpy()
+    
         
 if __name__ == "__main__":
     #coeff = 0.1
@@ -118,7 +146,8 @@ if __name__ == "__main__":
     #labels = torch.Tensor([[0, 0, 1],[0.0, 0.5, 0.5]])
     #loss = EvLoss(logits, labels, coeff)
     #print(loss)
-    alpha1 = torch.Tensor([[1, 2, 5],[1, 2, 2]])
+    alpha1 = torch.Tensor([[1, 2, 5],[1, 2, 2], [1, 1, 5],[1, 1, 3]])
     alpha2 = torch.Tensor([[1, 1, 5],[1, 1, 3]])
-    print(DS_Combin([alpha1, alpha2]))
+    labels = [2, 0, 0, 2]
+    print(discounting_fit(alpha1-1, labels))
     
