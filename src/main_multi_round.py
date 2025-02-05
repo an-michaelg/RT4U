@@ -128,8 +128,9 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         
         # get the history from this round of training and create pseudolabels
         prediction_history = model.get_prediction_history()
+        label_bank = model.get_label_bank()
         print(f"--- META: Creating new pseudolabels ---")
-        new_pseudolabels = utils.convert_history_to_pseudo(prediction_history)
+        new_pseudolabels = utils.convert_history_to_pseudo(prediction_history, label_bank, cfg.pseudo_method, cfg.pseudo_calibrate)
         
         # save the pseudolabels into a file for future reference
         save_path = os.path.join(full_save_dir, "pseudo.csv")

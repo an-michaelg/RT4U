@@ -19,6 +19,8 @@ from utils import plot_emb, save_csv
 from noise_robust_losses import mae, nce_rce, anl_ce
 from evidential import EvidentialLoss
 
+MODES =  ["train", "val", "test"]
+
 
 class Supervised(pl.LightningModule):
     def __init__(
@@ -76,7 +78,9 @@ class Supervised(pl.LightningModule):
         metrics = {}
         self.cache = {}
         self.pred_history = {}
-        self.modes = ["train", "val", "test"]
+        self.label_bank = {} # keep track of the labels which will be useful
+        
+        self.modes = MODES
         for j in self.modes:
             #metrics[j + "_f1"] = torchmetrics.F1Score(
             #    task="multiclass", num_classes=num_classes, average="macro"
@@ -91,6 +95,8 @@ class Supervised(pl.LightningModule):
             self.cache[j + "_y"] = []
             self.cache[j + "_uid"] = []
             self.cache[j + "_pred"] = []
+            self.pred_history[j] = {}
+            
         self.metrics = torch.nn.ModuleDict(metrics)
 
         # Define optimizer and scheduler
@@ -177,6 +183,7 @@ class Supervised(pl.LightningModule):
         z_saved = torch.cat(self.cache[mode + "_z"]).numpy()
         y_saved = torch.cat(self.cache[mode + "_y"]).numpy()
         title = f"{mode}_{self.current_epoch}_{f1_epoch:.2f}"
+        print(f"{mode} {len(y_saved)}")
         
         if self.save_dir is not None:
             emb_save_name = title + "_tsne.jpg"
@@ -201,14 +208,13 @@ class Supervised(pl.LightningModule):
         print(confusion_matrix(y_saved, pred_saved_argmax))
         
         # update pred_history with the results from this epoch
-        pred_saved_softmax = softmax(pred_saved, axis=1)
-        if mode == "train":
-            for i in range(len(uid_saved)):
-                fn = uid_saved[i]
-                pr = pred_saved_softmax[i]
-                if self.pred_history.get(fn) is None:
-                    self.pred_history[fn] = []
-                self.pred_history[fn].append(pr)
+        for i in range(len(uid_saved)):
+            fn = uid_saved[i]
+            pr = pred_saved[i]
+            if self.pred_history[mode].get(fn) is None:
+                self.pred_history[mode][fn] = []
+                self.label_bank[fn] = y_saved[i]
+            self.pred_history[mode][fn].append(pr)
         
         for k in self.cache.keys():
             if mode in k:
@@ -236,3 +242,6 @@ class Supervised(pl.LightningModule):
             
     def get_prediction_history(self):
         return self.pred_history
+
+    def get_label_bank(self):
+        return self.label_bank

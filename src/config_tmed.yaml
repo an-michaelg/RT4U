@@ -5,6 +5,8 @@ seed_everything: 42
 ckpt_path: null
 test_only: false
 num_evolution_iters: 1 # 0 for generic training
+pseudo_method: avg_pred
+pseudo_calibrate: true
 reset_weights_between_rounds: true
 
 model: # Ideally, algorithm-relevant hyperparameters are kept here
@@ -19,11 +21,11 @@ model: # Ideally, algorithm-relevant hyperparameters are kept here
 trainer:
   accelerator: "gpu"
   accumulate_grad_batches: 8
-  devices: [1]
+  devices: [0]
   fast_dev_run: false
-  #limit_train_batches: 2
-  #limit_val_batches: 2
-  #limit_test_batches: 2
+  #limit_train_batches: 10
+  #limit_val_batches: 10
+  #limit_test_batches: 10
   max_epochs: 15
 
 logger: # files saved in <save_dir>/<name>_suffix
