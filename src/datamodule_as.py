@@ -73,6 +73,7 @@ class ASDataModule(pl.LightningDataModule):
         self.frames = frames
 
     def setup(self, stage: str):
+        # TODO change back later
         self.dset_train = self.get_AS_dataset(split="train", mode="train")
         self.dset_val = self.get_AS_dataset(split="val", mode="val")
         self.dset_test = self.get_AS_dataset(split="test", mode="test")
@@ -173,7 +174,15 @@ class AorticStenosisDataset(Dataset):
         # append dataset root to each path in the dataframe
         # tip: map(lambda x: x+1) means add 1 to each element in the column
         dataset["path"] = dataset["path"].map(lambda x: join(dataset_root, Path(x)))
-
+        
+        """
+        Fixing the label noise issue with some mild cases being mislabelled as normal - 2025.03.26 M
+        """
+        dataset["as_label"] = np.where(
+            (dataset['AV stenosis severity'] == 'mild') & (dataset['as_label'] == 'normal'),
+            'mild', dataset["as_label"]
+        )
+        
         ##### VIEW, LABEL AND SPLIT SUB-SET SELECTION #####
         if view in ("plax", "psax"):
             dataset = dataset[dataset["view"] == view]
@@ -362,6 +371,7 @@ class AorticStenosisDataset(Dataset):
             "x": cine,
             "y": label_as,
             "y_u": label_as_soft,
+            "study_id": data_info["Echo ID#"],
             "view": view,
             "interval_idx": interval_idx,
             "window_start": window_start,

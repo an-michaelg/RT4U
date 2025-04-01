@@ -130,7 +130,8 @@ def studyinfo_from_query_key(s):
     # If a match is found, extract the groups and return them as a tuple
     if match:
         ID, studyNum, imageNum = match.groups()
-        return int(ID), int(studyNum), int(imageNum)
+        #return int(ID), int(studyNum), int(imageNum)
+        return str(ID) + '_' + str(studyNum)
     else:
         return None
         
@@ -208,6 +209,7 @@ class TMED2(Dataset):
         n_view_classes = len(np.unique(list(tmed_view_schemes['all'].values())))
         y_view_u = np.zeros(n_view_classes)
         y_view_u[y_view] = 1.0
+        study_id = studyinfo_from_query_key(data_info['query_key'])
 
         if self.transform is not None:
             img = self.transform(img)
@@ -215,7 +217,7 @@ class TMED2(Dataset):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        return {'x':img, 'y':y, 'y_u':y_u, 'uid':uid, 'view':view, 'query_key':data_info['query_key']}
+        return {'x':img, 'y':y, 'y_u':y_u, 'uid':uid, 'view':view, 'study_id':study_id, 'query_key':data_info['query_key']}
 
     def __len__(self):
         return len(self.dataset)

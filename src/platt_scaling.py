@@ -13,10 +13,12 @@ def platt_scaling_fit(logits, y, num_iters=5000, mode="platt"):
     if mode == "platt": # params are 1/A_k
         params = torch.randn(D, requires_grad=True)
     else: # temperature scaling, params is 1/T
-        params = torch.randn(1, requires_grad=True)
-        #params = torch.tensor(1.01, requires_grad=True) #torch.normal(mean=1, std=0, requires_grad=True)
+        #params = torch.randn(1, requires_grad=True).to(device)
+        #params = torch.tensor(1.01, requires_grad=True) #
+        params = torch.normal(mean=torch.Tensor([1]), std=torch.Tensor([0.1]))
+        params.requires_grad = True
     y_tensor = torch.Tensor(y).long()
-    optimizer = torch.optim.SGD([params], lr=1e-3)
+    optimizer = torch.optim.SGD([params], lr=1e-2)
     
     for i in range(num_iters):
         optimizer.zero_grad()
@@ -25,8 +27,8 @@ def platt_scaling_fit(logits, y, num_iters=5000, mode="platt"):
         loss = F.cross_entropy(new_logits, y_tensor)
         loss.backward()
         optimizer.step()
-        # if i % 500 == 0:
-        #   print(f"iteration {i}, loss = {loss.item()}, {temp}")
+        #if i % 500 == 0:
+        #  print(f"iteration {i}, loss = {loss.item()}, {temp}")
             
     return temp.detach().numpy()
     

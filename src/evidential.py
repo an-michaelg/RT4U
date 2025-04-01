@@ -119,7 +119,8 @@ def discounting_fit(evidence, y, num_iters=5000):
     loss_fcn = EvidentialLoss()
     
     ev_tensor = torch.Tensor(evidence)
-    params = torch.randn(1, requires_grad=True)
+    params = torch.normal(mean=torch.Tensor([1]), std=torch.Tensor([0.1]))
+    params.requires_grad = True
     
     y_tensor = F.one_hot(torch.Tensor(y).long(), num_classes=D)
     #print(y_tensor)

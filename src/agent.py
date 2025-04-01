@@ -43,10 +43,11 @@ class Supervised(pl.LightningModule):
         really should be done with Callbacks - M
         """
         self.save_dir = save_dir
-        self.emb_dir = os.path.join(self.save_dir, "embeddings")
-        self.csv_dir = os.path.join(self.save_dir, "csvs")
-        os.makedirs(self.emb_dir, exist_ok=True)
-        os.makedirs(self.csv_dir, exist_ok=True)
+        if self.save_dir is not None:
+            self.emb_dir = os.path.join(self.save_dir, "embeddings")
+            self.csv_dir = os.path.join(self.save_dir, "csvs")
+            os.makedirs(self.emb_dir, exist_ok=True)
+            os.makedirs(self.csv_dir, exist_ok=True)
 
         # Initialize model
         self.encoder, embedding_dim = get_backbone(backbone, pretrained)
