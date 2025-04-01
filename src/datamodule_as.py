@@ -175,14 +175,6 @@ class AorticStenosisDataset(Dataset):
         # tip: map(lambda x: x+1) means add 1 to each element in the column
         dataset["path"] = dataset["path"].map(lambda x: join(dataset_root, Path(x)))
         
-        """
-        Fixing the label noise issue with some mild cases being mislabelled as normal - 2025.03.26 M
-        """
-        dataset["as_label"] = np.where(
-            (dataset['AV stenosis severity'] == 'mild') & (dataset['as_label'] == 'normal'),
-            'mild', dataset["as_label"]
-        )
-        
         ##### VIEW, LABEL AND SPLIT SUB-SET SELECTION #####
         if view in ("plax", "psax"):
             dataset = dataset[dataset["view"] == view]

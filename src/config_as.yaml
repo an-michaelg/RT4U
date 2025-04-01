@@ -48,7 +48,7 @@ checkpoint:
 dataset: "AS"
 
 data:
-  csv_name: '/workspace/datasets/Aortic_Stenosis/as_tom/round2/annotations-all_NoLeak.csv'
+  csv_name: '/workspace/datasets/Aortic_Stenosis/as_tom/round2/annotations-all-mmfix-20250327.csv'
   data_dir: '/workspace/datasets/Aortic_Stenosis/as_tom/round2'
   batch_size: 4
   num_workers: 4
