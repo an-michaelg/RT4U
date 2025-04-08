@@ -73,7 +73,6 @@ class ASDataModule(pl.LightningDataModule):
         self.frames = frames
 
     def setup(self, stage: str):
-        # TODO change back later
         self.dset_train = self.get_AS_dataset(split="train", mode="train")
         self.dset_val = self.get_AS_dataset(split="val", mode="val")
         self.dset_test = self.get_AS_dataset(split="test", mode="test")
