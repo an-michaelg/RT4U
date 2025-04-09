@@ -7,7 +7,6 @@ test_only: false
 num_evolution_iters: 1 # 0 for generic training
 pseudo_method: avg_pred
 pseudo_calibrate: true
-reset_weights_between_rounds: true
 
 model: # Ideally, algorithm-relevant hyperparameters are kept here
   agent_name: Supervised

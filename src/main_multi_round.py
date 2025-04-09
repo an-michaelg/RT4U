@@ -49,7 +49,6 @@ def main_no_cli(cfg):  # config file is loaded via yaml
     # based on the number of evolution iterations Ne, we will have
     # Ne directories to save the model training results
     num_evolution_iters = cfg.num_evolution_iters + 1
-    reset_weights_between_rounds = cfg.reset_weights_between_rounds
     
     # get the root of the save directory, desired experiment name
     root_save_dir = cfg.logger.init_args.save_dir
@@ -115,14 +114,9 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         
         # instantiate the model with randomly initialized weights
         model = agent_builder(cfg.model.agent_name, cfg.model.init_args, full_save_dir)
-        # if we are on >1 evolution iters, and we want to use previous model weights, load them
-        if ne > 0 and reset_weights_between_rounds == False:
-            print(f"--- META: Loading weights from previous epoch ---")
-            model.load_only_weights(ckpt_path_from_last_round)
-
-        trainer = pl.Trainer(**cfg.trainer, callbacks=[checkpoint_callback], logger=logger)
         
         # run the training and test procedures
+        trainer = pl.Trainer(**cfg.trainer, callbacks=[checkpoint_callback], logger=logger)
         trainer.fit(model, ckpt_path=cfg.ckpt_path, train_dataloaders=dm.train_dataloader(), val_dataloaders=dm.val_dataloader())
         trainer.test(model, ckpt_path="best", dataloaders=dm.test_dataloader())
         
