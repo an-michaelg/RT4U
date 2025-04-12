@@ -22,7 +22,7 @@ import utils
 import wandb
 
 
-def agent_builder(agent_name, init_args_dict, mil_coeff, save_dir):
+def agent_builder(agent_name, init_args_dict, save_dir):
     # if agent_name == "Supervised":
     # return Supervised(**init_args_dict, save_dir=save_dir)
     # elif agent_name == "SupervisedDenseFeatures":
@@ -31,7 +31,7 @@ def agent_builder(agent_name, init_args_dict, mil_coeff, save_dir):
     # return SupervisedPrototypes(**init_args_dict, save_dir=save_dir)
     # else:
     # raise ValueError
-    return Supervised(**init_args_dict, mil_coeff=mil_coeff, save_dir=save_dir)
+    return Supervised(**init_args_dict, save_dir=save_dir)
 
 
 def datamodule_builder(dataset_name, data_args_dict):
@@ -63,7 +63,6 @@ def main_no_cli(cfg):  # config file is loaded via yaml
     # obtain the datamodule object
     dm = datamodule_builder(cfg.dataset, cfg.data)
     dm.setup("fit")
-    mil_coeff = 0.01 if cfg.data.mil_sampler else 0.0
 
     # alternate flow for test only mode - use the existing folder
     if cfg.test_only:
@@ -77,9 +76,7 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         OmegaConf.save(cfg, os.path.join(full_save_dir, "hydra_config_test.yaml"))
 
         # instantiate the lightningmodule
-        model = agent_builder(
-            cfg.model.agent_name, cfg.model.init_args, mil_coeff, full_save_dir
-        )
+        model = agent_builder(cfg.model.agent_name, cfg.model.init_args, full_save_dir)
         trainer = pl.Trainer(
             **cfg.trainer,
             callbacks=[checkpoint_callback],
@@ -124,9 +121,7 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         OmegaConf.save(cfg, os.path.join(full_save_dir, "hydra_config.yaml"))
 
         # instantiate the model with randomly initialized weights
-        model = agent_builder(
-            cfg.model.agent_name, cfg.model.init_args, mil_coeff, full_save_dir
-        )
+        model = agent_builder(cfg.model.agent_name, cfg.model.init_args, full_save_dir)
 
         # run the training and test procedures
         trainer = pl.Trainer(

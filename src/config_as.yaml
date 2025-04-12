@@ -28,13 +28,17 @@ trainer:
   max_epochs: 15
 
 logger: # files saved in <save_dir>/<name>_suffix
-  logger_name: WandbLogger
+  logger_name = CSVLogger
   init_args:
-    save_dir: "../logs/" # root directory for wandb logs
-    project: "AS_valve" 
-    name: "as_ce_mil_test"
-    notes: null
-    mode: "disabled"
+    save_dir: "../logs/"
+    name: "as_ce_atg_test"
+  # logger_name: WandbLogger
+  # init_args:
+    # save_dir: "../logs/" # root directory for wandb logs
+    # project: "AS_valve" 
+    # name: "as_ce_atg_test"
+    # notes: null
+    # mode: "disabled"
     
 checkpoint:
   filename: "{epoch}-{val_f1_epoch:.2f}"
@@ -51,7 +55,6 @@ data:
   data_dir: '/workspace/datasets/Aortic_Stenosis/as_tom/round2'
   batch_size: 4
   num_workers: 4
-  mil_sampler: off # 'off'/'classbag'/'study'
   sampler_balance: True  # true if balance wrt as_label
   label_scheme_name: 'tufts'  # one of 'tufts', 'binary', 'all', 'not_severe', 'as_only', 'mild_moderate', 'moderate_severe'
   view: 'all'   # one of  psax, plax, all

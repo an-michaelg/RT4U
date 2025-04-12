@@ -29,7 +29,7 @@ class Supervised(pl.LightningModule):
         backbone="r2plus1d_18",
         pretrained=True,
         num_classes=4,
-        mil_coeff=0.0,  # [0, 1], if using MIL, make sure examples in each batch contain same label
+        attn_guiding_coeff=0.0,
         learning_rate=1e-4,
         save_dir=None,
         loss="ce",
@@ -51,15 +51,13 @@ class Supervised(pl.LightningModule):
             os.makedirs(self.emb_dir, exist_ok=True)
             os.makedirs(self.csv_dir, exist_ok=True)
 
-        self.mil_coeff = mil_coeff
+        self.attn_guiding_coeff = attn_guiding_coeff
+        self.attn_loss_fcn = torch.nn.L1Loss(reduction="mean")
 
         # Initialize model
         self.encoder, embedding_dim = get_backbone(backbone, pretrained)
         self.decoder = torch.nn.Linear(embedding_dim, self.num_classes)
-        if self.mil_coeff > 0.0:
-            self.attention_decoder = get_attention_decoder(embedding_dim)
-        else:
-            self.attention_decoder = None
+        self.attention_decoder = get_attention_decoder(embedding_dim)
 
         # this loss can be used with both class probabilities and integer class labels
         if loss == "ce":
@@ -101,8 +99,7 @@ class Supervised(pl.LightningModule):
             self.cache[j + "_uid"] = []
             self.cache[j + "_sid"] = []
             self.cache[j + "_pred"] = []
-            if self.mil_coeff > 0.0:
-                self.cache[j + "_attn"] = []
+            self.cache[j + "_attn"] = []
             self.pred_history[j] = {}
 
         self.metrics = torch.nn.ModuleDict(metrics)
@@ -113,50 +110,47 @@ class Supervised(pl.LightningModule):
     def forward(self, x):
         z = self.encoder(x)  # NxD
         logits = self.decoder(z)  # NxC
-        if self.attention_decoder is not None:
-            attention = self.attention_decoder(z)  # Nx1
-        else:
-            attention = None
+        attention = self.attention_decoder(z)  # Nx1
+
         return {"logits": logits, "attn": attention, "z": z}
 
-    def loss_wrapper(self, logits, attn, y_pseudo, y_oh):
-        if self.mil_coeff > 0.0:
-            attention_coeffs = torch.nn.functional.softmax(attn, dim=0)
-            logits_attn = torch.sum(
-                attention_coeffs * logits, dim=0, keepdim=True
-            )  # 1xC
-            batch_term_loss = self.loss_fcn(logits_attn, y_oh[0:1])  # 1x1
-            single_term_loss = self.loss_fcn(logits, y_pseudo)
-            return (
-                self.mil_coeff * batch_term_loss
-                + (1 - self.mil_coeff) * single_term_loss
-            )
-        else:
-            return self.loss_fcn(logits, y_pseudo)
+    def loss_wrapper(self, logits, attn, y_pseudo, y_attn):
+        class_loss = self.loss_fcn(logits, y_pseudo)
+        attn_loss = self.attn_loss_fcn(attn, y_attn)
+        return class_loss, attn_loss
 
     def common_step(self, batch, batch_idx, mode="train"):
         x = batch["x"]
         y = batch["y"]  # one-hot label
         y_u = batch["y_u"]  # uncertainty-augmented label
+        y_attn = batch["y_attn"]  # attention guiding label
 
         outs = self.forward(x)
 
         # compute losses
-        loss = self.loss_wrapper(outs["logits"], outs["attn"], y_u, y)
+        class_loss, attn_loss = self.loss_wrapper(
+            outs["logits"], outs["attn"], y_u, y_attn
+        )
+        scaled_attn_loss = self.attn_guiding_coeff * attn_loss
+        loss = class_loss + scaled_attn_loss
 
         # update metrics
         acc = self.metrics[mode + "_acc"](outs["logits"][:, : self.num_classes], y)
         f1 = self.metrics[mode + "_f1"](outs["logits"][:, : self.num_classes], y)
 
-        log = {mode + "_loss": loss, mode + "_acc": acc, mode + "_f1": f1}
+        log = {
+            mode + "_closs": loss,
+            mode + "_aloss": scaled_attn_loss,
+            mode + "_acc": acc,
+            mode + "_f1": f1,
+        }
         self.log_dict(log)
         self.cache[mode + "_z"].append(outs["z"].detach().cpu())
         self.cache[mode + "_y"].append(y.cpu())
         self.cache[mode + "_uid"].extend(batch["uid"])
         self.cache[mode + "_sid"].extend(batch["sid"])
         self.cache[mode + "_pred"].append(outs["logits"].detach().cpu())
-        if self.mil_coeff > 0.0:
-            self.cache[mode + "_attn"].append(outs["attn"].detach().cpu())
+        self.cache[mode + "_attn"].append(outs["attn"].detach().cpu())
 
         return loss
 
@@ -226,10 +220,8 @@ class Supervised(pl.LightningModule):
 
         # save a copy of the cached predictions
         pred_saved = torch.cat(self.cache[mode + "_pred"]).numpy()
-        if self.mil_coeff > 0.0:
-            attn_saved = torch.cat(self.cache[mode + "_attn"]).squeeze().numpy()
-        else:
-            attn_saved = None
+        attn_saved = torch.cat(self.cache[mode + "_attn"]).squeeze().numpy()
+
         uid_saved = self.cache[mode + "_uid"]
         sid_saved = self.cache[mode + "_sid"]
         csv_save_name = title + ".csv"
@@ -256,21 +248,6 @@ class Supervised(pl.LightningModule):
         for k in self.cache.keys():
             if mode in k:
                 self.cache[k].clear()
-
-    def on_train_epoch_start(self):
-        # turn batchnorm to eval mode if we are using MIL
-        def deactivate_batchnorm(m):
-            if isinstance(m, nn.BatchNorm3d) or isinstance(m, nn.BatchNorm2d):
-                m.reset_parameters()
-                m.eval()
-                with torch.no_grad():
-                    m.weight.fill_(1.0)
-                    m.bias.zero_()
-
-        # apply performs this action recursively to child submodules
-        if self.mil_coeff > 0.0:
-            self.encoder.apply(deactivate_batchnorm)
-            print("Agent: Batch normalization deactivated")
 
     def on_train_epoch_end(self):
         self.common_epoch_end("train")

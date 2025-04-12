@@ -19,7 +19,6 @@ import lightning.pytorch as pl
 
 from as_tom_data_utils import label_schemes, compute_intervals
 from data_transforms import RandomRotateVideo
-from custom_samplers import MILSampler
 
 DATA_ROOT = "D:/Datasets/aorticstenosis/round2"
 CSV_NAME = "D:/Datasets/aorticstenosis/round2/annotations-all.csv"
@@ -33,7 +32,6 @@ class ASDataModule(pl.LightningDataModule):
         batch_size: int = 4,
         num_workers: int = 0,
         sampler_balance: bool = True,  # if true, balance the outputs wrt AS class using weighted sampler
-        mil_sampler: str = "off",  # using MIL sampling to get batches with the same class ('classbag') or study ('study')
         label_scheme_name: str = "all",  # see as_tom_data_utils.label_schemes
         view: str = "plax",  # one of  psax, plax, all
         iterate_intervals: bool = True,  # true to get multiple images/videos from the same dicom in sequence during inference
@@ -58,7 +56,6 @@ class ASDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         # sampler
         self.sampler_balance = sampler_balance
-        self.mil_sampler = mil_sampler
         # subset of dataset
         self.label_scheme_name = label_scheme_name
         self.view = view
@@ -106,89 +103,40 @@ class ASDataModule(pl.LightningDataModule):
         return dset
 
     def train_dataloader(self):
-        if self.mil_sampler == "classbag":
-            # retrieve a batch sampler based on mil configurations
-            batch_sampler_train = self.dset_train.batch_sampler(
-                self.batch_size, groupby_study=False, balance_label=self.sampler_balance
-            )
+        if self.sampler_balance:
+            sampler_AS = self.dset_train.class_sampler_AS()
             dl = DataLoader(
                 self.dset_train,
-                batch_sampler=batch_sampler_train,
-                num_workers=self.num_workers,
-            )
-        elif self.mil_sampler == "study":
-            batch_sampler_train = self.dset_train.batch_sampler(
-                self.batch_size, groupby_study=True, balance_label=self.sampler_balance
-            )
-            dl = DataLoader(
-                self.dset_train,
-                batch_sampler=batch_sampler_train,
+                batch_size=self.batch_size,
+                sampler=sampler_AS,
                 num_workers=self.num_workers,
             )
         else:
-            if self.sampler_balance:
-                sampler_AS = self.dset_train.class_sampler_AS()
-                dl = DataLoader(
-                    self.dset_train,
-                    batch_size=self.batch_size,
-                    sampler=sampler_AS,
-                    num_workers=self.num_workers,
-                )
-            else:
-                dl = DataLoader(
-                    self.dset_train,
-                    batch_size=self.batch_size,
-                    shuffle=True,
-                    num_workers=self.num_workers,
-                )
+            dl = DataLoader(
+                self.dset_train,
+                batch_size=self.batch_size,
+                shuffle=True,
+                num_workers=self.num_workers,
+            )
         print(
-            f"Train_loader instantiated with MIL={self.mil_sampler}, batch_size={self.batch_size}, sampler_balance={self.sampler_balance}"
+            f"Train_loader instantiated with batch_size={self.batch_size}, sampler_balance={self.sampler_balance}"
         )
         return dl
 
     def val_dataloader(self):
-        if self.mil_sampler == "classbag":
-            # retrieve a batch sampler based on mil configurations
-            batch_sampler_val = self.dset_val.batch_sampler(
-                self.batch_size, groupby_study=False, balance_label=False
-            )
-            dl = DataLoader(
-                self.dset_val,
-                batch_sampler=batch_sampler_val,
-                num_workers=self.num_workers,
-            )
-        elif self.mil_sampler == "study":
-            batch_sampler_val = self.dset_val.batch_sampler(
-                self.batch_size, groupby_study=True, balance_label=False
-            )
-            dl = DataLoader(
-                self.dset_val,
-                batch_sampler=batch_sampler_val,
-                num_workers=self.num_workers,
-            )
-        else:
-            dl = DataLoader(
-                self.dset_val,
-                batch_size=self.batch_size,
-                shuffle=False,
-                num_workers=self.num_workers,
-            )
-        # return DataLoader(
-        #     self.dset_val, batch_size=1, shuffle=False, num_workers=self.num_workers
-        # )
-        print(
-            f"Val_loader instantiated with MIL={self.mil_sampler} and batch_size={self.batch_size}"
+        return DataLoader(
+            self.dset_val,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
         )
-        return dl
 
     def test_dataloader(self):
-        print(f"Test_loader instantiated with MIL={False} and batch_size={1}")
         return DataLoader(
             self.dset_test, batch_size=1, shuffle=False, num_workers=self.num_workers
         )
 
     def predict_dataloader(self):
-        print(f"Predict_loader instantiated with MIL={False} and batch_size={1}")
         return DataLoader(
             self.dset_predict, batch_size=1, shuffle=False, num_workers=self.num_workers
         )
@@ -342,22 +290,6 @@ class AorticStenosisDataset(Dataset):
         samples_weight_as = weight_as[labels_as]
         sampler_as = WeightedRandomSampler(samples_weight_as, len(samples_weight_as))
         return sampler_as
-
-    def batch_sampler(self, batch_size=4, groupby_study=False, balance_label=False):
-        # fetch a list of class and echo ID indices
-
-        # since interval iteration increases the number of effective samples per study,
-        # and thus introduces new indexing, we need to account for this
-        if self.interval_iteration:
-            temp_dataset = self.dataset_intervals
-        else:
-            temp_dataset = self.dataset
-
-        labels_as = temp_dataset.apply(
-            lambda x: self.scheme[x.as_label], axis=1
-        ).to_numpy()
-        study = temp_dataset["Echo ID#"].to_numpy()
-        return MILSampler(study, labels_as, batch_size, groupby_study, balance_label)
 
     def __len__(self) -> int:
         """
