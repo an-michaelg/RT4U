@@ -1,3 +1,6 @@
+## Note on multi-instance learning
+The MIL branch may not yield stable results during training, you have been warned!
+
 ## Introduction
 Repository for "Reliable Multi-View Learning with Conformal Prediction for Aortic Stenosis Classification in Echocardiography"
 Includes code to train ResNet-18 and R(2+1)D models with the RT4U algorithm using the Pytorch Lightning framework
