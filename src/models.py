@@ -17,9 +17,7 @@ class Identity(nn.Module):
         return x
 
 
-def get_backbone(
-    base_architecture: str = "r2plus1d_18", pretrained: bool = False
-):
+def get_backbone(base_architecture: str = "r2plus1d_18", pretrained: bool = False):
     if base_architecture == "r2plus1d_18":
         backbone_weights = "KINETICS400_V1" if pretrained else None
         backbone = tvm.video.r2plus1d_18(weights=backbone_weights)
@@ -34,20 +32,35 @@ def get_backbone(
         output_dim = backbone.head.in_features
         assert output_dim == 768
         backbone.head = Identity()
-        
+
     elif base_architecture == "resnet_18":
         backbone_weights = "IMAGENET1K_V1" if pretrained else None
         backbone = tvm.resnet18(weights=backbone_weights)
         output_dim = backbone.fc.in_features
         assert output_dim == 512
         backbone.fc = Identity()
-        
+
     else:
         raise NotImplementedError()
 
     print(f"Model backbone initialized {base_architecture}")
     return backbone, output_dim
-    
+
+
+def get_attention_decoder(embedding_dim):
+    attention_module = nn.Sequential(
+        nn.Linear(embedding_dim, embedding_dim // 4),
+        nn.Tanh(),
+        nn.Linear(embedding_dim // 4, 1),
+    )
+    return attention_module
+
+
 if __name__ == "__main__":
-    backbone, output_dim = get_backbone("resnet_18")
+    backbone, output_dim = get_backbone("r2plus1d_18")
     print(backbone)
+    # decoder = get_attention_decoder(384)
+    # print(decoder)
+    # a = torch.randn(4, 384)
+    # print(a.shape)
+    # print(decoder(a))

@@ -10,16 +10,17 @@ from scipy.special import softmax
 from sklearn.metrics import confusion_matrix
 
 import torch
+import torch.nn as nn
 import lightning.pytorch as pl
 import torchmetrics
 
-from models import get_backbone
+from models import get_backbone, get_attention_decoder
 from utils import plot_emb, save_csv
 
 from noise_robust_losses import mae, nce_rce, anl_ce
 from evidential import EvidentialLoss
 
-MODES =  ["train", "val", "test"]
+MODES = ["train", "val", "test"]
 
 
 class Supervised(pl.LightningModule):
@@ -28,9 +29,10 @@ class Supervised(pl.LightningModule):
         backbone="r2plus1d_18",
         pretrained=True,
         num_classes=4,
+        mil_coeff=0.0,  # [0, 1], if using MIL, make sure examples in each batch contain same label
         learning_rate=1e-4,
         save_dir=None,
-        loss='ce',
+        loss="ce",
         **kwargs,
     ):
         super().__init__()
@@ -49,21 +51,26 @@ class Supervised(pl.LightningModule):
             os.makedirs(self.emb_dir, exist_ok=True)
             os.makedirs(self.csv_dir, exist_ok=True)
 
+        self.mil_coeff = mil_coeff
+
         # Initialize model
         self.encoder, embedding_dim = get_backbone(backbone, pretrained)
         self.decoder = torch.nn.Linear(embedding_dim, self.num_classes)
+        if self.mil_coeff > 0.0:
+            self.attention_decoder = get_attention_decoder(embedding_dim)
+        else:
+            self.attention_decoder = None
 
         # this loss can be used with both class probabilities and integer class labels
-        if loss == 'ce':
-            # this weighted loss implementation is hella sketch remember to turn it off for not TMED
+        if loss == "ce":
             self.loss_fcn = torch.nn.CrossEntropyLoss(reduction="mean")
-        elif loss == 'mae':
+        elif loss == "mae":
             self.loss_fcn = mae(self.num_classes)
-        elif loss == 'nce_rce':
+        elif loss == "nce_rce":
             self.loss_fcn = nce_rce(self.num_classes)
-        elif loss == 'anl_ce':
+        elif loss == "anl_ce":
             self.loss_fcn = anl_ce(self.num_classes)
-        elif loss == 'evidential':
+        elif loss == "evidential":
             self.loss_fcn = EvidentialLoss()
 
         # Define metrics for each stage and save intermediate outputs
@@ -79,15 +86,12 @@ class Supervised(pl.LightningModule):
         metrics = {}
         self.cache = {}
         self.pred_history = {}
-        self.label_bank = {} # keep track of the labels which will be useful
-        
+        self.label_bank = {}  # keep track of the labels which will be useful
+
         self.modes = MODES
         for j in self.modes:
-            #metrics[j + "_f1"] = torchmetrics.F1Score(
-            #    task="multiclass", num_classes=num_classes, average="macro"
-            #)
             metrics[j + "_f1"] = torchmetrics.classification.MulticlassAccuracy(
-               num_classes=num_classes, average="macro"
+                num_classes=num_classes, average="macro"
             )
             metrics[j + "_acc"] = torchmetrics.Accuracy(
                 task="multiclass", num_classes=num_classes
@@ -95,31 +99,50 @@ class Supervised(pl.LightningModule):
             self.cache[j + "_z"] = []
             self.cache[j + "_y"] = []
             self.cache[j + "_uid"] = []
+            self.cache[j + "_sid"] = []
             self.cache[j + "_pred"] = []
+            if self.mil_coeff > 0.0:
+                self.cache[j + "_attn"] = []
             self.pred_history[j] = {}
-            
+
         self.metrics = torch.nn.ModuleDict(metrics)
 
         # Define optimizer and scheduler
         self.lr = learning_rate
 
     def forward(self, x):
-        z = self.encoder(x)
-        logits = self.decoder(z)
-        return {"logits": logits, "z": z}
+        z = self.encoder(x)  # NxD
+        logits = self.decoder(z)  # NxC
+        if self.attention_decoder is not None:
+            attention = self.attention_decoder(z)  # Nx1
+        else:
+            attention = None
+        return {"logits": logits, "attn": attention, "z": z}
 
-    def loss_wrapper(self, logits, y):
-        return self.loss_fcn(logits, y)
+    def loss_wrapper(self, logits, attn, y_pseudo, y_oh):
+        if self.mil_coeff > 0.0:
+            attention_coeffs = torch.nn.functional.softmax(attn, dim=0)
+            logits_attn = torch.sum(
+                attention_coeffs * logits, dim=0, keepdim=True
+            )  # 1xC
+            batch_term_loss = self.loss_fcn(logits_attn, y_oh[0:1])  # 1x1
+            single_term_loss = self.loss_fcn(logits, y_pseudo)
+            return (
+                self.mil_coeff * batch_term_loss
+                + (1 - self.mil_coeff) * single_term_loss
+            )
+        else:
+            return self.loss_fcn(logits, y_pseudo)
 
     def common_step(self, batch, batch_idx, mode="train"):
         x = batch["x"]
-        y = batch["y"] # one-hot label
-        y_u = batch["y_u"] # uncertainty-augmented label
-        
+        y = batch["y"]  # one-hot label
+        y_u = batch["y_u"]  # uncertainty-augmented label
+
         outs = self.forward(x)
 
         # compute losses
-        loss = self.loss_wrapper(outs["logits"], y_u)  # self.ce_loss(outs["logits"], y)
+        loss = self.loss_wrapper(outs["logits"], outs["attn"], y_u, y)
 
         # update metrics
         acc = self.metrics[mode + "_acc"](outs["logits"][:, : self.num_classes], y)
@@ -130,7 +153,10 @@ class Supervised(pl.LightningModule):
         self.cache[mode + "_z"].append(outs["z"].detach().cpu())
         self.cache[mode + "_y"].append(y.cpu())
         self.cache[mode + "_uid"].extend(batch["uid"])
+        self.cache[mode + "_sid"].extend(batch["sid"])
         self.cache[mode + "_pred"].append(outs["logits"].detach().cpu())
+        if self.mil_coeff > 0.0:
+            self.cache[mode + "_attn"].append(outs["attn"].detach().cpu())
 
         return loss
 
@@ -185,29 +211,39 @@ class Supervised(pl.LightningModule):
         y_saved = torch.cat(self.cache[mode + "_y"]).numpy()
         title = f"{mode}_{self.current_epoch}_{f1_epoch:.2f}"
         print(f"{mode} {len(y_saved)}")
-        
+
         if self.save_dir is not None:
             emb_save_name = title + "_tsne.jpg"
             emb_save_path = os.path.join(self.emb_dir, emb_save_name)
-            self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title, compression="tsne")
+            self.plot_emb_wrapper(
+                z_saved, y_saved, emb_save_path, title, compression="tsne"
+            )
             emb_save_name = title + "_umap.jpg"
             emb_save_path = os.path.join(self.emb_dir, emb_save_name)
-            self.plot_emb_wrapper(z_saved, y_saved, emb_save_path, title, compression="umap")
-        
+            self.plot_emb_wrapper(
+                z_saved, y_saved, emb_save_path, title, compression="umap"
+            )
 
         # save a copy of the cached predictions
         pred_saved = torch.cat(self.cache[mode + "_pred"]).numpy()
+        if self.mil_coeff > 0.0:
+            attn_saved = torch.cat(self.cache[mode + "_attn"]).squeeze().numpy()
+        else:
+            attn_saved = None
         uid_saved = self.cache[mode + "_uid"]
+        sid_saved = self.cache[mode + "_sid"]
         csv_save_name = title + ".csv"
         csv_save_path = os.path.join(self.csv_dir, csv_save_name)
         if self.save_dir is not None:
-            if len(y_saved) > 100: # prevents saving the sanity check run
-                save_csv(uid_saved, y_saved, pred_saved, csv_save_path)
-        
+            if len(y_saved) > 100:  # prevents saving the sanity check run
+                save_csv(
+                    uid_saved, sid_saved, y_saved, pred_saved, attn_saved, csv_save_path
+                )
+
         # plot the confusion matrix
         pred_saved_argmax = np.argmax(pred_saved, axis=1)
         print(confusion_matrix(y_saved, pred_saved_argmax))
-        
+
         # update pred_history with the results from this epoch
         for i in range(len(uid_saved)):
             fn = uid_saved[i]
@@ -216,10 +252,25 @@ class Supervised(pl.LightningModule):
                 self.pred_history[mode][fn] = []
                 self.label_bank[fn] = y_saved[i]
             self.pred_history[mode][fn].append(pr)
-        
+
         for k in self.cache.keys():
             if mode in k:
                 self.cache[k].clear()
+
+    def on_train_epoch_start(self):
+        # turn batchnorm to eval mode if we are using MIL
+        def deactivate_batchnorm(m):
+            if isinstance(m, nn.BatchNorm3d) or isinstance(m, nn.BatchNorm2d):
+                m.reset_parameters()
+                m.eval()
+                with torch.no_grad():
+                    m.weight.fill_(1.0)
+                    m.bias.zero_()
+
+        # apply performs this action recursively to child submodules
+        if self.mil_coeff > 0.0:
+            self.encoder.apply(deactivate_batchnorm)
+            print("Agent: Batch normalization deactivated")
 
     def on_train_epoch_end(self):
         self.common_epoch_end("train")
@@ -229,7 +280,7 @@ class Supervised(pl.LightningModule):
 
     def on_test_epoch_end(self):
         self.common_epoch_end("test")
-        
+
     # load only weights from a checkpoint file
     def load_only_weights(self, ckpt_path=None):
         if ckpt_path is not None:
@@ -240,9 +291,29 @@ class Supervised(pl.LightningModule):
             print("Model state_dict loaded from " + ckpt_path)
         else:
             print("No ckpt_path specified, returning")
-            
+
     def get_prediction_history(self):
         return self.pred_history
 
     def get_label_bank(self):
         return self.label_bank
+
+
+if __name__ == "__main__":
+    logits = torch.Tensor([[3, 0, 0], [2, 0, 0], [0, 4, 0], [5, 0, 0]])
+    attn = torch.Tensor([[4], [-1], [2], [0]])
+    y = torch.Tensor([0, 0, 0, 0]).long()
+    y_u = torch.Tensor([[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 0, 0]])
+    print(logits)
+    print(attn)
+    attention_coeffs = torch.nn.functional.softmax(attn, dim=0)
+    print(attention_coeffs)
+    logits_attn = torch.sum(attention_coeffs * logits, dim=0, keepdim=True)  # 1xC
+    print(logits_attn)
+
+    loss_fcn = torch.nn.CrossEntropyLoss(reduction="mean")
+    batch_term_loss = loss_fcn(logits_attn, y[0:1])
+    print(batch_term_loss)
+    single_term_loss = loss_fcn(logits, y_u)
+    print(single_term_loss)
+    print(y[0:1])

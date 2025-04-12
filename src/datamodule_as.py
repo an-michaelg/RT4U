@@ -19,6 +19,7 @@ import lightning.pytorch as pl
 
 from as_tom_data_utils import label_schemes, compute_intervals
 from data_transforms import RandomRotateVideo
+from custom_samplers import MILSampler
 
 DATA_ROOT = "D:/Datasets/aorticstenosis/round2"
 CSV_NAME = "D:/Datasets/aorticstenosis/round2/annotations-all.csv"
@@ -31,7 +32,8 @@ class ASDataModule(pl.LightningDataModule):
         csv_name: str = CSV_NAME,
         batch_size: int = 4,
         num_workers: int = 0,
-        sampler: str = "random",  # one of 'AS', 'random'
+        sampler_balance: bool = True,  # if true, balance the outputs wrt AS class using weighted sampler
+        mil_sampler: str = "off",  # using MIL sampling to get batches with the same class ('classbag') or study ('study')
         label_scheme_name: str = "all",  # see as_tom_data_utils.label_schemes
         view: str = "plax",  # one of  psax, plax, all
         iterate_intervals: bool = True,  # true to get multiple images/videos from the same dicom in sequence during inference
@@ -54,7 +56,9 @@ class ASDataModule(pl.LightningDataModule):
         # dataloader
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.sampler = sampler
+        # sampler
+        self.sampler_balance = sampler_balance
+        self.mil_sampler = mil_sampler
         # subset of dataset
         self.label_scheme_name = label_scheme_name
         self.view = view
@@ -85,7 +89,7 @@ class ASDataModule(pl.LightningDataModule):
             view=self.view,
             split=split,
             label_scheme_name=self.label_scheme_name,
-            interval_iteration=(mode != "train"),
+            interval_iteration=False,  # (mode != "train"),
             interval_add_offset=False,
             interval_unit=self.interval_unit,
             interval_quant=self.interval_quant,
@@ -102,43 +106,96 @@ class ASDataModule(pl.LightningDataModule):
         return dset
 
     def train_dataloader(self):
-        if self.sampler == "AS":
-            sampler_AS = self.dset_train.class_sampler_AS()
-            return DataLoader(
+        if self.mil_sampler == "classbag":
+            # retrieve a batch sampler based on mil configurations
+            batch_sampler_train = self.dset_train.batch_sampler(
+                self.batch_size, groupby_study=False, balance_label=self.sampler_balance
+            )
+            dl = DataLoader(
                 self.dset_train,
-                batch_size=self.batch_size,
-                sampler=sampler_AS,
+                batch_sampler=batch_sampler_train,
+                num_workers=self.num_workers,
+            )
+        elif self.mil_sampler == "study":
+            batch_sampler_train = self.dset_train.batch_sampler(
+                self.batch_size, groupby_study=True, balance_label=self.sampler_balance
+            )
+            dl = DataLoader(
+                self.dset_train,
+                batch_sampler=batch_sampler_train,
                 num_workers=self.num_workers,
             )
         else:
-            return DataLoader(
-                self.dset_train,
-                batch_size=self.batch_size,
-                shuffle=True,
-                num_workers=self.num_workers,
-            )
+            if self.sampler_balance:
+                sampler_AS = self.dset_train.class_sampler_AS()
+                dl = DataLoader(
+                    self.dset_train,
+                    batch_size=self.batch_size,
+                    sampler=sampler_AS,
+                    num_workers=self.num_workers,
+                )
+            else:
+                dl = DataLoader(
+                    self.dset_train,
+                    batch_size=self.batch_size,
+                    shuffle=True,
+                    num_workers=self.num_workers,
+                )
+        print(
+            f"Train_loader instantiated with MIL={self.mil_sampler}, batch_size={self.batch_size}, sampler_balance={self.sampler_balance}"
+        )
+        return dl
 
     def val_dataloader(self):
-        return DataLoader(
-            self.dset_val,
-            batch_size=self.batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
+        if self.mil_sampler == "classbag":
+            # retrieve a batch sampler based on mil configurations
+            batch_sampler_val = self.dset_val.batch_sampler(
+                self.batch_size, groupby_study=False, balance_label=False
+            )
+            dl = DataLoader(
+                self.dset_val,
+                batch_sampler=batch_sampler_val,
+                num_workers=self.num_workers,
+            )
+        elif self.mil_sampler == "study":
+            batch_sampler_val = self.dset_val.batch_sampler(
+                self.batch_size, groupby_study=True, balance_label=False
+            )
+            dl = DataLoader(
+                self.dset_val,
+                batch_sampler=batch_sampler_val,
+                num_workers=self.num_workers,
+            )
+        else:
+            dl = DataLoader(
+                self.dset_val,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.num_workers,
+            )
+        # return DataLoader(
+        #     self.dset_val, batch_size=1, shuffle=False, num_workers=self.num_workers
+        # )
+        print(
+            f"Val_loader instantiated with MIL={self.mil_sampler} and batch_size={self.batch_size}"
         )
+        return dl
 
     def test_dataloader(self):
+        print(f"Test_loader instantiated with MIL={False} and batch_size={1}")
         return DataLoader(
             self.dset_test, batch_size=1, shuffle=False, num_workers=self.num_workers
         )
 
     def predict_dataloader(self):
+        print(f"Predict_loader instantiated with MIL={False} and batch_size={1}")
         return DataLoader(
             self.dset_predict, batch_size=1, shuffle=False, num_workers=self.num_workers
         )
-        
+
     def get_pseudo(self):
         return self.dset_train.get_pseudo()
-    
+
     def set_pseudo(self, pseudo):
         # modify the pseudo property of ds_train
         self.dset_train.set_pseudo(pseudo)
@@ -173,7 +230,7 @@ class AorticStenosisDataset(Dataset):
         # append dataset root to each path in the dataframe
         # tip: map(lambda x: x+1) means add 1 to each element in the column
         dataset["path"] = dataset["path"].map(lambda x: join(dataset_root, Path(x)))
-        
+
         ##### VIEW, LABEL AND SPLIT SUB-SET SELECTION #####
         if view in ("plax", "psax"):
             dataset = dataset[dataset["view"] == view]
@@ -239,7 +296,7 @@ class AorticStenosisDataset(Dataset):
             )
             self.transform_time_dilation = transform_time_dilation
         self.normalize = normalize
-        
+
         ##### CONFIGURE PSEUDOLABELS #####
         self.num_classes = len(np.unique(list(self.scheme.values())))
         self.pseudo = {}
@@ -249,10 +306,10 @@ class AorticStenosisDataset(Dataset):
             uid = data_info["path"]
             self.pseudo[uid] = np.zeros(self.num_classes)
             self.pseudo[uid][label] = 1.0
-            
+
     def get_pseudo(self):
         return self.pseudo
-        
+
     def set_pseudo(self, new_pseudo):
         keys_not_found = []
         for k in new_pseudo.keys():
@@ -267,14 +324,40 @@ class AorticStenosisDataset(Dataset):
         """
         returns samplers (WeightedRandomSamplers) based on frequency of the AS class occurring
         """
-        labels_as = self.dataset.apply(lambda x: self.scheme[x.as_label], axis=1).values
-        class_sample_count_as = self.dataset.as_label.value_counts()[
+
+        # since interval iteration increases the number of effective samples per study,
+        # and thus introduces new indexing, we need to account for this
+        if self.interval_iteration:
+            temp_dataset = self.dataset_intervals
+        else:
+            temp_dataset = self.dataset
+
+        labels_as = temp_dataset.apply(
+            lambda x: self.scheme[x.as_label], axis=1
+        ).to_numpy()
+        class_sample_count_as = temp_dataset.as_label.value_counts()[
             self.scheme.keys()
         ].to_numpy()
         weight_as = 1.0 / class_sample_count_as
         samples_weight_as = weight_as[labels_as]
         sampler_as = WeightedRandomSampler(samples_weight_as, len(samples_weight_as))
         return sampler_as
+
+    def batch_sampler(self, batch_size=4, groupby_study=False, balance_label=False):
+        # fetch a list of class and echo ID indices
+
+        # since interval iteration increases the number of effective samples per study,
+        # and thus introduces new indexing, we need to account for this
+        if self.interval_iteration:
+            temp_dataset = self.dataset_intervals
+        else:
+            temp_dataset = self.dataset
+
+        labels_as = temp_dataset.apply(
+            lambda x: self.scheme[x.as_label], axis=1
+        ).to_numpy()
+        study = temp_dataset["Echo ID#"].to_numpy()
+        return MILSampler(study, labels_as, batch_size, groupby_study, balance_label)
 
     def __len__(self) -> int:
         """
@@ -362,7 +445,7 @@ class AorticStenosisDataset(Dataset):
             "x": cine,
             "y": label_as,
             "y_u": label_as_soft,
-            "study_id": data_info["Echo ID#"],
+            "sid": data_info["Echo ID#"].astype(str),
             "view": view,
             "interval_idx": interval_idx,
             "window_start": window_start,
