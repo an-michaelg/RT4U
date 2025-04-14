@@ -11,7 +11,10 @@ from omegaconf import DictConfig, OmegaConf
 import hydra
 
 import lightning.pytorch as pl
-from lightning.pytorch.loggers.wandb import WandbLogger
+
+# from lightning.pytorch.loggers.wandb import WandbLogger
+# import wandb
+from lightning.pytorch.loggers import CSVLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 from agent import Supervised
@@ -19,7 +22,6 @@ from datamodule_cifar import CIFAR_Q_DataModule
 from datamodule_as import ASDataModule
 from datamodule_tmed import TMED2_DataModule
 import utils
-import wandb
 
 
 def agent_builder(agent_name, init_args_dict, save_dir):
@@ -69,7 +71,7 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         full_save_dir = os.path.join(root_save_dir, experiment_name)
 
         # instantiate callbacks
-        logger = WandbLogger(**cfg.logger.init_args)
+        logger = CSVLogger(**cfg.logger.init_args)
         checkpoint_callback = ModelCheckpoint(**cfg.checkpoint, dirpath=full_save_dir)
 
         # save the configs for future reference
@@ -93,13 +95,14 @@ def main_no_cli(cfg):  # config file is loaded via yaml
     full_save_dir_base, new_exp_name_base = utils.resolve_save_dir(
         root_save_dir, experiment_name
     )
+    attn_loss = cfg.model.init_args.attn_guiding_coeff
     for ne in range(num_evolution_iters):
         print(f"--- META: Start of evolution iteration {ne} ---")
 
         # if we are using >1 evolution iters, create sub-experiments for the evolution iter
         if num_evolution_iters > 1:
             full_save_dir = os.path.join(full_save_dir_base, "round" + str(ne))
-            new_exp_name = new_exp_name_base + "_round" + str(ne)
+            new_exp_name = new_exp_name_base + "/round" + str(ne)
             os.makedirs(full_save_dir)
             print(f"Directory created at {full_save_dir}")
         else:
@@ -112,7 +115,7 @@ def main_no_cli(cfg):  # config file is loaded via yaml
 
         # the new experiment name is used by the logger
         cfg.logger.init_args.name = new_exp_name
-        logger = WandbLogger(**cfg.logger.init_args)
+        logger = CSVLogger(**cfg.logger.init_args)
 
         # the new save directory is used by the checkpoint callback, other params are the same
         checkpoint_callback = ModelCheckpoint(**cfg.checkpoint, dirpath=full_save_dir)
@@ -121,6 +124,7 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         OmegaConf.save(cfg, os.path.join(full_save_dir, "hydra_config.yaml"))
 
         # instantiate the model with randomly initialized weights
+        cfg.model.init_args.attn_guiding_coeff = 0.0 if ne == 0 else attn_loss
         model = agent_builder(cfg.model.agent_name, cfg.model.init_args, full_save_dir)
 
         # run the training and test procedures
@@ -139,20 +143,22 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         prediction_history = model.get_prediction_history()
         label_bank = model.get_label_bank()
         print(f"--- META: Creating new pseudolabels ---")
-        new_pseudolabels = utils.convert_history_to_pseudo(
+        new_pseudolabels, attn_guidance = utils.convert_history_to_pseudo(
             prediction_history, label_bank, cfg.pseudo_method, cfg.pseudo_calibrate
         )
 
         # save the pseudolabels into a file for future reference
         save_path = os.path.join(full_save_dir, "pseudo.csv")
-        utils.save_pseudolabels(new_pseudolabels, save_path=save_path)
+        utils.save_pseudolabels(
+            new_pseudolabels, save_path=save_path, attn=attn_guidance
+        )
 
         # prepare the next round of training - both save path and pseudolabel
         print(f"--- META: Loading pseudolabels for next iteration ---")
-        dm.set_pseudo(new_pseudolabels)
+        dm.set_pseudo(new_pseudolabels, attn_guidance)
 
-        # we are using the wandb logger, reset the logger for the next iteration
-        wandb.finish()
+        # # if we are using the wandb logger, reset the logger for the next iteration
+        # #wandb.finish()
 
 
 if __name__ == "__main__":

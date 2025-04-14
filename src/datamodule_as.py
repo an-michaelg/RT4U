@@ -141,12 +141,13 @@ class ASDataModule(pl.LightningDataModule):
             self.dset_predict, batch_size=1, shuffle=False, num_workers=self.num_workers
         )
 
-    def get_pseudo(self):
-        return self.dset_train.get_pseudo()
+    # def get_pseudo(self):
+    # return self.dset_train.get_pseudo()
 
-    def set_pseudo(self, pseudo):
-        # modify the pseudo property of ds_train
-        self.dset_train.set_pseudo(pseudo)
+    def set_pseudo(self, pseudo, attn_guidance=None):
+        # modify the pseudo property
+        self.dset_train.set_pseudo(pseudo, attn_guidance)
+        self.dset_val.set_pseudo(pseudo, attn_guidance)
 
 
 class AorticStenosisDataset(Dataset):
@@ -248,25 +249,24 @@ class AorticStenosisDataset(Dataset):
         ##### CONFIGURE PSEUDOLABELS #####
         self.num_classes = len(np.unique(list(self.scheme.values())))
         self.pseudo = {}
+        self.attn_guidance = {}
         for i in range(len(self.dataset)):
             data_info = self.dataset.iloc[i]
             label = int(self.scheme[data_info["as_label"]])
             uid = data_info["path"]
             self.pseudo[uid] = np.zeros(self.num_classes)
             self.pseudo[uid][label] = 1.0
+            self.attn_guidance[uid] = 1.0
 
     def get_pseudo(self):
         return self.pseudo
 
-    def set_pseudo(self, new_pseudo):
-        keys_not_found = []
+    def set_pseudo(self, new_pseudo, attn_guidance=None):
         for k in new_pseudo.keys():
             if self.pseudo.get(k) is not None:
                 self.pseudo[k] = new_pseudo[k]
-            else:
-                keys_not_found.append(k)
-        if len(keys_not_found) > 0:
-            print(f"Warning: new keys {k} do not exist in existing uid set")
+                if attn_guidance:
+                    self.attn_guidance[k] = attn_guidance[k]
 
     def class_sampler_AS(self):
         """
@@ -360,6 +360,7 @@ class AorticStenosisDataset(Dataset):
 
         label_as = torch.tensor(self.scheme[data_info["as_label"]])
         label_as_soft = self.pseudo[data_info["path"]]
+        label_attn = self.attn_guidance[data_info["path"]]
         view = torch.tensor((data_info["view"] == "psax") * 1)
 
         if self.transform:
@@ -377,6 +378,7 @@ class AorticStenosisDataset(Dataset):
             "x": cine,
             "y": label_as,
             "y_u": label_as_soft,
+            "y_attn": label_attn,
             "sid": data_info["Echo ID#"].astype(str),
             "view": view,
             "interval_idx": interval_idx,

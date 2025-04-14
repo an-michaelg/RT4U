@@ -1,5 +1,12 @@
-## APR 10 AS CE MIL runs with 0.5 coeff (half MIL half normal)
-python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_mil_005 ++trainer.max_epochs=10
+## APR 12 AS CE runs with attn guidance
+python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_atg_01 ++trainer.max_epochs=15 ++model.init_args.attn_guiding_coeff=0.1
+# python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_atg_test ++trainer.max_epochs=15
+
+# ## APR 12 AS CE runs with attn guidance testing mechanics
+# python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_atg_test ++trainer.max_epochs=2
+
+# ## APR 10 AS CE MIL runs with 0.5 coeff (half MIL half normal)
+#python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_mil_005 ++trainer.max_epochs=10
 #python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_mil_05 ++trainer.max_epochs=15
 
 # ## APR 09 AS CE MIL runs testing mechanics

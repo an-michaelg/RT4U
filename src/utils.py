@@ -204,6 +204,20 @@ def output_to_evidence(arr):
     return arr.clip(min=0)
 
 
+def compute_aum_score(arr, y):  # n_epochs x C real, scalar int -> scalar real
+    N, C = arr.shape
+    aum = []
+    for i in range(N):
+        pred_i = arr[i]
+        class_i = y
+        logit_class_i = pred_i[class_i]
+        max_logit_excl_class_i = max(
+            [xj for j, xj in enumerate(pred_i) if j != class_i]
+        )
+        aum.append(logit_class_i - max_logit_excl_class_i)
+    return np.mean(aum)
+
+
 def convert_history_to_pseudo(
     pred_history, label_bank, method="avg_pred", calibrate=True
 ):
@@ -217,7 +231,7 @@ def convert_history_to_pseudo(
         keys are the unique ID (uid),
         values are numpy arrays of network predictions over training epochs
     label_bank : dict
-        label_bank keys are unique ID (uid) and values are the one-hot labels
+        label_bank keys are unique ID (uid) and values are the one-hot int labels
     method : String, optional
         specifies the method used to produce pseudolabels, can be
         - avg_pred: averages the confidence [0..1] across all epochs
@@ -229,14 +243,23 @@ def convert_history_to_pseudo(
     Returns
     -------
     pseudo : dict
-        Dictionary of pseudolabel values for the training set
+        Dictionary of pseudolabel values for training and validation sets
         where keys are filenames and values are (C, ) numpy arrays
         with values between [0..1] and sum = 1
+    attn : dict
+        Dictionary of guided attention values based on the
+        area under the margin score where keys are filenames
+        and values are real-valued scalars
     """
     pseudo = {}
+    train_hist = pred_history["train"]
+    val_hist = pred_history["val"]
+    combined_hist = val_hist.copy()
+    combined_hist.update(train_hist)
+
     if method == "avg_pred":
-        for k in pred_history["train"].keys():
-            history = np.array(pred_history["train"][k])  # n_epoch x C
+        for k in combined_hist.keys():
+            history = np.array(combined_hist[k])  # n_epoch x C
             confidence = softmax(history, axis=1)
             pseudo[k] = np.mean(confidence, axis=0)
     elif method == "avg_logit":
@@ -244,8 +267,8 @@ def convert_history_to_pseudo(
 
         if calibrate:  # perform temperature scaling
             avg_va, y_va = [], []
-            for k in pred_history["val"].keys():
-                history = np.array(pred_history["val"][k])  # n_epoch x C
+            for k in val_hist.keys():
+                history = np.array(val_hist[k])  # n_epoch x C
                 avg_va.append(np.mean(history, axis=0))
                 y_va.append(label_bank[k])
 
@@ -254,8 +277,8 @@ def convert_history_to_pseudo(
             )
         else:
             temp = 1.0
-        for k in pred_history["train"].keys():
-            history = np.array(pred_history["train"][k])  # n_epoch x C
+        for k in combined_hist.keys():
+            history = np.array(combined_hist[k])  # n_epoch x C
             pseudo[k] = softmax(np.mean(history, axis=0) * temp)
 
     elif method == "evidence":
@@ -263,8 +286,8 @@ def convert_history_to_pseudo(
 
         if calibrate:  # perform discounting
             ev_va, y_va = [], []
-            for k in pred_history["val"].keys():
-                history = np.array(pred_history["val"][k])  # n_epoch x C
+            for k in val_hist.keys():
+                history = np.array(val_hist[k])  # n_epoch x C
                 history_evidence = output_to_evidence(history)
                 ev_va.append(np.mean(history_evidence, axis=0))
                 y_va.append(label_bank[k])
@@ -275,8 +298,8 @@ def convert_history_to_pseudo(
             df = np.mean(dfs)
         else:
             df = 1.0
-        for k in pred_history["train"].keys():
-            history = np.array(pred_history["train"][k])  # n_epoch x C
+        for k in combined_hist.keys():
+            history = np.array(combined_hist[k])  # n_epoch x C
             history_evidence = output_to_evidence(history)
             discounted_evidence = np.mean(history_evidence, axis=0) * df  # C
             alpha = discounted_evidence + 1
@@ -286,14 +309,35 @@ def convert_history_to_pseudo(
             f"method must be avg_pred/avg_logit/evidence, received {method}"
         )
 
-    return pseudo
+    attn = {}
+    if calibrate:  # perform temperature scaling
+        avg_va, y_va = [], []
+        for k in val_hist.keys():
+            history = np.array(val_hist[k])  # n_epoch x C
+            avg_va.append(np.mean(history, axis=0))
+            y_va.append(label_bank[k])
+
+        temp = platt_scaling_fit(np.array(avg_va), y_va, num_iters=5000, mode="temp")
+    else:
+        temp = 1.0
+    for k in combined_hist.keys():
+        history = np.array(combined_hist[k])  # n_epoch x C
+        aum = compute_aum_score(history, label_bank[k])
+        aum_scaled = aum * temp
+        attn[k] = aum_scaled
+
+    return pseudo, attn
 
 
-def save_pseudolabels(pseudo, save_path):
+def save_pseudolabels(pseudo, save_path, attn=None):
     # save pseudolabels as a csv file
     data_dict = {"uid": []}
+    if attn:
+        data_dict["attn"] = []
+
     for k in pseudo.keys():
         data_dict["uid"].append(k)
+
         pseudolabel = pseudo[k]
         C = len(pseudolabel)
         for c in range(C):
@@ -301,6 +345,10 @@ def save_pseudolabels(pseudo, save_path):
             if data_dict.get(column_name) is None:
                 data_dict[column_name] = []
             data_dict[column_name].append(pseudolabel[c])
+
+        if attn:
+            data_dict["attn"].append(attn[k])
+
     df = pd.DataFrame.from_dict(data_dict)
     if save_path is not None:
         df.to_csv(save_path)
@@ -319,9 +367,10 @@ if __name__ == "__main__":
         "d": [np.array([8, 1, -1]), np.array([9, 0, -1])],
     }
     labels = {"a": 0, "b": 0, "c": 1, "d": 0}
-    pseudo = convert_history_to_pseudo(
+    pseudo, attn = convert_history_to_pseudo(
         history_test, labels, method="avg_pred", calibrate=False
     )
     print(pseudo)
-    df = save_pseudolabels(pseudo, None)
+    print(attn)
+    df = save_pseudolabels(pseudo, None, attn)
     print(df)

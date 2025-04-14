@@ -108,9 +108,9 @@ class Supervised(pl.LightningModule):
         self.lr = learning_rate
 
     def forward(self, x):
-        z = self.encoder(x)  # NxD
-        logits = self.decoder(z)  # NxC
-        attention = self.attention_decoder(z)  # Nx1
+        z = self.encoder(x)  # (N, D)
+        logits = self.decoder(z)  # (N, C)
+        attention = self.attention_decoder(z)  # (N, 1)
 
         return {"logits": logits, "attn": attention, "z": z}
 
@@ -121,9 +121,9 @@ class Supervised(pl.LightningModule):
 
     def common_step(self, batch, batch_idx, mode="train"):
         x = batch["x"]
-        y = batch["y"]  # one-hot label
-        y_u = batch["y_u"]  # uncertainty-augmented label
-        y_attn = batch["y_attn"]  # attention guiding label
+        y = batch["y"]  # one-hot label (N,)
+        y_u = batch["y_u"]  # uncertainty-augmented label (N, C)
+        y_attn = batch["y_attn"].unsqueeze(1)  # attention guiding label (N, 1)
 
         outs = self.forward(x)
 
@@ -139,7 +139,7 @@ class Supervised(pl.LightningModule):
         f1 = self.metrics[mode + "_f1"](outs["logits"][:, : self.num_classes], y)
 
         log = {
-            mode + "_closs": loss,
+            mode + "_closs": class_loss,
             mode + "_aloss": scaled_attn_loss,
             mode + "_acc": acc,
             mode + "_f1": f1,
@@ -285,7 +285,7 @@ if __name__ == "__main__":
     print(attn)
     attention_coeffs = torch.nn.functional.softmax(attn, dim=0)
     print(attention_coeffs)
-    logits_attn = torch.sum(attention_coeffs * logits, dim=0, keepdim=True)  # 1xC
+    logits_attn = torch.sum(attention_coeffs * logits, dim=0, keepdim=True)  # (1, C)
     print(logits_attn)
 
     loss_fcn = torch.nn.CrossEntropyLoss(reduction="mean")
