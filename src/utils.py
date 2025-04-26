@@ -272,8 +272,8 @@ def convert_history_to_pseudo(
                 avg_va.append(np.mean(history, axis=0))
                 y_va.append(label_bank[k])
 
-            temp = platt_scaling_fit(
-                np.array(avg_va), y_va, num_iters=5000, mode="temp"
+            temp = np.mean(
+                platt_scaling_fit(np.array(avg_va), y_va, num_iters=5000, mode="temp")
             )
         else:
             temp = 1.0
@@ -347,12 +347,35 @@ def save_pseudolabels(pseudo, save_path, attn=None):
             data_dict[column_name].append(pseudolabel[c])
 
         if attn:
+            # TODO fix a shape error here?
             data_dict["attn"].append(attn[k])
 
     df = pd.DataFrame.from_dict(data_dict)
     if save_path is not None:
         df.to_csv(save_path)
     return df
+
+
+def load_pseudolabels(load_path):
+    # load pseudolabels from csv file created by save_pseudolabels
+    df = pd.read_csv(load_path)
+    filenames = df["uid"].to_numpy()
+    pseudo_cols = sorted([x for x in df.columns if "pseudo" in x])
+    pseudo = {}
+    if "attn" in df.columns:
+        attn = {}
+    else:
+        attn = None
+
+    for i, f in enumerate(filenames):
+        pseudo_i = df.iloc[i][pseudo_cols].to_numpy(
+            dtype="d"
+        )  # default np dtype is 'd' = float64
+        pseudo[f] = pseudo_i
+        if "attn" in df.columns:
+            attn[f] = df.iloc[i]["attn"]
+
+    return pseudo, attn
 
 
 if __name__ == "__main__":
@@ -372,5 +395,8 @@ if __name__ == "__main__":
     )
     print(pseudo)
     print(attn)
-    df = save_pseudolabels(pseudo, None, attn)
+    df = save_pseudolabels(pseudo, "test_pseudo.csv", attn)
     print(df)
+    load_p, load_a = load_pseudolabels("test_pseudo.csv")
+    print(load_p)
+    print(load_a)

@@ -1,5 +1,17 @@
+## APR 21 AS no attn guidance run with logit calibration because I don't know what is real anymore
+python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_logit_newcsv ++trainer.max_epochs=15 ++model.init_args.attn_guiding_coeff=0.0 ++pseudo_method=avg_logit ++pseudo_calibrate=true
+
+# ## APR 16 AS attn guidance bumping up higher
+# python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_atg_l2_05 ++trainer.max_epochs=15 ++model.init_args.attn_guiding_coeff=0.5
+
+# ## APR 16 AS attn guidance with L2 loss this time around
+# python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_atg_l2_02 ++trainer.max_epochs=15
+
+## APR 13 AS CE runs with attn guidance shortcut run (starting from round 1)
+# python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_atg_logit ++trainer.max_epochs=15 ++pseudo_calibrate=true ++pseudo_method=avg_logit #++start_from_round=1 ++external_pseudo_file="../logs/as_ce_atg_test/round0/pseudo.csv"
+
 ## APR 12 AS CE runs with attn guidance
-python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_atg_01 ++trainer.max_epochs=15 ++model.init_args.attn_guiding_coeff=0.1
+# python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_atg_01 ++trainer.max_epochs=15 ++model.init_args.attn_guiding_coeff=0.1
 # python main_multi_round.py --config-name=config_as ++logger.init_args.name=as_ce_atg_test ++trainer.max_epochs=15
 
 # ## APR 12 AS CE runs with attn guidance testing mechanics

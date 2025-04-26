@@ -52,7 +52,7 @@ class Supervised(pl.LightningModule):
             os.makedirs(self.csv_dir, exist_ok=True)
 
         self.attn_guiding_coeff = attn_guiding_coeff
-        self.attn_loss_fcn = torch.nn.L1Loss(reduction="mean")
+        self.attn_loss_fcn = torch.nn.MSELoss(reduction="mean")
 
         # Initialize model
         self.encoder, embedding_dim = get_backbone(backbone, pretrained)
@@ -116,7 +116,7 @@ class Supervised(pl.LightningModule):
 
     def loss_wrapper(self, logits, attn, y_pseudo, y_attn):
         class_loss = self.loss_fcn(logits, y_pseudo)
-        attn_loss = self.attn_loss_fcn(attn, y_attn)
+        attn_loss = self.attn_loss_fcn(attn, y_attn.float())
         return class_loss, attn_loss
 
     def common_step(self, batch, batch_idx, mode="train"):

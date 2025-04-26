@@ -96,7 +96,11 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         root_save_dir, experiment_name
     )
     attn_loss = cfg.model.init_args.attn_guiding_coeff
+    new_pseudolabels = None
     for ne in range(num_evolution_iters):
+
+        if ne < cfg.start_from_round:
+            continue
         print(f"--- META: Start of evolution iteration {ne} ---")
 
         # if we are using >1 evolution iters, create sub-experiments for the evolution iter
@@ -120,12 +124,24 @@ def main_no_cli(cfg):  # config file is loaded via yaml
         # the new save directory is used by the checkpoint callback, other params are the same
         checkpoint_callback = ModelCheckpoint(**cfg.checkpoint, dirpath=full_save_dir)
 
+        # initialize the attention guiding loss
+        cfg.model.init_args.attn_guiding_coeff = 0.0 if ne == 0 else attn_loss
+
         # save the configs
         OmegaConf.save(cfg, os.path.join(full_save_dir, "hydra_config.yaml"))
 
         # instantiate the model with randomly initialized weights
-        cfg.model.init_args.attn_guiding_coeff = 0.0 if ne == 0 else attn_loss
         model = agent_builder(cfg.model.agent_name, cfg.model.init_args, full_save_dir)
+
+        # initialize pseudolabels from an external file (if specified)
+        if cfg.external_pseudo_file is not None and new_pseudolabels is None:
+            print(
+                f"--- META: Loading pseudolabels from external file {cfg.external_pseudo_file} ---"
+            )
+            external_pseudo, external_attn_guidance = utils.load_pseudolabels(
+                cfg.external_pseudo_file
+            )
+            dm.set_pseudo(external_pseudo, external_attn_guidance)
 
         # run the training and test procedures
         trainer = pl.Trainer(
